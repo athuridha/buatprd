@@ -12,6 +12,7 @@ export default function Navbar() {
     <nav className="w-full border-b border-border/40 bg-surface-1/50 backdrop-blur-md sticky top-0 z-50 print:hidden">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="font-bold tracking-tight text-xl flex items-center gap-2">
+          <img src="/logo.png" alt="BuatPRD Logo" className="w-8 h-8 rounded-lg object-cover" />
           <span className="bg-gradient-to-br from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
             BuatPRD
           </span>
