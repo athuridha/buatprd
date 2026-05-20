@@ -151,7 +151,7 @@ const MermaidRenderer = memo(function MermaidRenderer({
           state: {
             curve: 'step',
           }
-        });
+        } as any);
 
         const sanitized = sanitizeMermaidChart(trimmed);
         const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;

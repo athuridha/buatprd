@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import PhaseIndicator from "@/components/ui/PhaseIndicator";
 import BriefInput from "@/components/BriefInput";
@@ -126,12 +126,28 @@ function parseSummary(raw: string): SummaryData | null {
   }
 }
 
-/* ---- Main Page Component ---- */
 export default function Home() {
   const [phase, setPhase] = useState<Phase>(1);
   const [brief, setBrief] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("loadDraft") === "true") {
+        const draft = sessionStorage.getItem("draft_prd");
+        if (draft) {
+          setPrdMarkdown(draft);
+          setPhase(4);
+          // Don't remove right away in case they refresh, but let's clear it
+          sessionStorage.removeItem("draft_prd");
+          // Clear URL parameter
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      }
+    }
+  }, []);
 
   // Phase 2 data
   const [analysis, setAnalysis] = useState<AnalysisData | null>(null);
@@ -268,24 +284,11 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="flex-1 flex flex-col">
-      {/* Nav */}
-      <header className="border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center">
-              <span className="text-zinc-950 font-bold text-sm">P</span>
-            </div>
-            <span className="font-semibold text-sm tracking-tight">
-              BuatPRD
-            </span>
-          </div>
-
-          <PhaseIndicator currentPhase={phase} phases={PHASE_LABELS} />
-
-          <div className="w-20" /> {/* Spacer for centering */}
-        </div>
-      </header>
+    <main className="flex-1 flex flex-col pt-6">
+      {/* Phase Indicator container under Navbar */}
+      <div className="max-w-[1400px] mx-auto w-full px-4 sm:px-6 flex justify-center mb-6">
+        <PhaseIndicator currentPhase={phase} phases={PHASE_LABELS} />
+      </div>
 
       {/* Error Banner */}
       {error && (

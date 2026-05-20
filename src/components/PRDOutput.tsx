@@ -11,10 +11,14 @@ import {
   ArrowCounterClockwise,
   Check,
   List,
+  CloudArrowUp,
 } from "@phosphor-icons/react";
 import MagneticButton from "./ui/MagneticButton";
 import GlassCard from "./ui/GlassCard";
 import MermaidRenderer from "./MermaidRenderer";
+import { useAuth } from "@/context/AuthContext";
+import { db, auth } from "@/lib/firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 interface PRDOutputProps {
   markdown: string;
@@ -86,6 +90,10 @@ export default function PRDOutput({
   const printRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const { user, signInWithGoogle } = useAuth();
 
   const toc = useMemo(() => extractTOC(markdown), [markdown]);
 
@@ -96,6 +104,39 @@ export default function PRDOutput({
       el.scrollTop = el.scrollHeight;
     }
   }, [markdown, isStreaming]);
+
+  const handleSaveToCloud = async () => {
+    if (!user) {
+      // If not logged in, prompt login
+      try {
+        await signInWithGoogle();
+      } catch (err) {
+        return; // user cancelled login
+      }
+    }
+
+    // Now they should be logged in, let's save
+    setIsSaving(true);
+    try {
+      // Create a brief title from the markdown
+      const titleMatch = markdown.match(/#\s+(.+)/);
+      const title = titleMatch ? titleMatch[1] : "Untitled PRD";
+
+      await addDoc(collection(db, "prds"), {
+        uid: auth.currentUser?.uid || user?.uid, // fallback
+        title,
+        content: markdown,
+        createdAt: serverTimestamp(),
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error) {
+      console.error("Error saving PRD:", error);
+      alert("Gagal menyimpan PRD ke cloud. Silakan coba lagi.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleCopy = useCallback(async () => {
     try {
@@ -211,6 +252,16 @@ export default function PRDOutput({
           >
             <DownloadSimple size={16} weight="bold" />
             .pdf
+          </MagneticButton>
+
+          <MagneticButton
+            variant="secondary"
+            size="sm"
+            onClick={handleSaveToCloud}
+            disabled={isStreaming || !markdown || isSaving}
+          >
+            <CloudArrowUp size={16} weight="bold" className={isSaving ? "animate-pulse" : ""} />
+            {isSaving ? "Saving..." : saveSuccess ? "Saved!" : "Save"}
           </MagneticButton>
 
           <MagneticButton

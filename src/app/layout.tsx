@@ -25,6 +25,9 @@ export const metadata: Metadata = {
   ],
 };
 
+import { AuthProvider } from "@/context/AuthContext";
+import Navbar from "@/components/Navbar";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,7 +39,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-[100dvh] flex flex-col bg-background text-foreground font-sans">
-        {children}
+        <AuthProvider>
+          <Navbar />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );
