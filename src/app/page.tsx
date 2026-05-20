@@ -2,6 +2,9 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import PhaseIndicator from "@/components/ui/PhaseIndicator";
 import BriefInput from "@/components/BriefInput";
 import QuestionsPanel from "@/components/QuestionsPanel";
@@ -127,10 +130,28 @@ function parseSummary(raw: string): SummaryData | null {
 }
 
 export default function Home() {
+  const { user } = useAuth();
   const [phase, setPhase] = useState<Phase>(1);
   const [brief, setBrief] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const autoSavePRD = useCallback(async (content: string) => {
+    if (!user || !content) return;
+    try {
+      const titleMatch = content.match(/#\s+(.+)/);
+      const title = titleMatch ? titleMatch[1] : "Untitled PRD";
+      await addDoc(collection(db, "prds"), {
+        uid: user.uid,
+        title,
+        content,
+        createdAt: serverTimestamp(),
+      });
+      console.log("PRD auto-saved to cloud!");
+    } catch (err) {
+      console.error("Auto-save failed:", err);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -198,18 +219,21 @@ export default function Home() {
     setError(null);
 
     try {
-      await streamFetch(
+      const finalText = await streamFetch(
         "/api/generate-prd",
         { brief: briefText, skipQuestions: true },
         (text) => setPrdMarkdown(text)
       );
+      if (user) {
+        await autoSavePRD(finalText);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal generate PRD.");
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
     }
-  }, []);
+  }, [user, autoSavePRD]);
 
   /* ---- Phase 2: Submit Answers → Summarize ---- */
   const handleSubmitAnswers = useCallback(
@@ -256,11 +280,14 @@ export default function Home() {
       setError(null);
 
       try {
-        await streamFetch(
+        const finalText = await streamFetch(
           "/api/generate-prd",
           { brief, summary: confirmedSummary },
           (text) => setPrdMarkdown(text)
         );
+        if (user) {
+          await autoSavePRD(finalText);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Gagal generate PRD.");
       } finally {
@@ -268,7 +295,7 @@ export default function Home() {
         setIsStreaming(false);
       }
     },
-    [brief]
+    [brief, user, autoSavePRD]
   );
 
   /* ---- Start Over ---- */
