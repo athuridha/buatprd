@@ -372,6 +372,7 @@ export default function Home() {
               markdown={prdMarkdown}
               isStreaming={isStreaming}
               onStartOver={handleStartOver}
+              projectBrief={brief}
             />
           )}
         </AnimatePresence>

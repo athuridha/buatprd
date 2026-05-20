@@ -24,6 +24,7 @@ interface PRDOutputProps {
   markdown: string;
   isStreaming: boolean;
   onStartOver: () => void;
+  projectBrief?: string;
 }
 
 /* Check if a mermaid code block is complete (has closing ```) */
@@ -85,6 +86,7 @@ export default function PRDOutput({
   markdown,
   isStreaming,
   onStartOver,
+  projectBrief,
 }: PRDOutputProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -118,9 +120,19 @@ export default function PRDOutput({
     // Now they should be logged in, let's save
     setIsSaving(true);
     try {
-      // Create a brief title from the markdown
-      const titleMatch = markdown.match(/#\s+(.+)/);
-      const title = titleMatch ? titleMatch[1] : "Untitled PRD";
+      let title = "PRD Document";
+      if (projectBrief) {
+        title = projectBrief.trim().replace(/^(saya\s+ingin\s+membuat|buatkan\s+saya|buat\s+prd\s+untuk|aplikasi)\s+/i, "");
+        title = title.charAt(0).toUpperCase() + title.slice(1);
+        if (title.length > 50) {
+          title = title.substring(0, 47) + "...";
+        }
+      } else {
+        const titleMatch = markdown.match(/#\s+(.+)/);
+        if (titleMatch && !titleMatch[1].includes("Requirements Document")) {
+          title = titleMatch[1];
+        }
+      }
 
       await addDoc(collection(db, "prds"), {
         uid: auth.currentUser?.uid || user?.uid, // fallback
