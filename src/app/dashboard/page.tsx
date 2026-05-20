@@ -41,8 +41,7 @@ export default function Dashboard() {
       try {
         const q = query(
           collection(db, "prds"),
-          where("uid", "==", user.uid),
-          orderBy("createdAt", "desc")
+          where("uid", "==", user.uid)
         );
         const querySnapshot = await getDocs(q);
         const docsList: PRDDocument[] = [];
@@ -55,6 +54,18 @@ export default function Dashboard() {
             createdAt: data.createdAt,
           });
         });
+
+        // Client-side sort by createdAt descending (newest first)
+        docsList.sort((a, b) => {
+          const timeA = a.createdAt?.seconds 
+            ? a.createdAt.seconds * 1000 
+            : (a.createdAt?.toDate ? a.createdAt.toDate().getTime() : Date.now());
+          const timeB = b.createdAt?.seconds 
+            ? b.createdAt.seconds * 1000 
+            : (b.createdAt?.toDate ? b.createdAt.toDate().getTime() : Date.now());
+          return timeB - timeA;
+        });
+
         setPrds(docsList);
         if (docsList.length > 0) {
           setSelectedPrd(docsList[0]);
