@@ -81,10 +81,11 @@ WAJIB sertakan:
 - **Use Case Diagram**: Gunakan Mermaid \`flowchart LR\` untuk memetakan interaksi fitur antara User dan Admin.
 
 ## 5. System Diagrams
-WAJIB sertakan 3 diagram Mermaid berikut untuk memvisualisasikan alur sistem:
+WAJIB sertakan 4 diagram Mermaid berikut untuk memvisualisasikan alur sistem:
 - **Activity Diagram**: Gunakan Mermaid \`stateDiagram-v2\` atau \`flowchart TD\` untuk menggambarkan alur aktivitas sistem secara umum.
 - **Sequence Diagram**: Gunakan Mermaid \`sequenceDiagram\` untuk interaksi komponen (contoh: User -> Frontend -> Backend -> Database/AI).
 - **Architecture Diagram**: Gunakan Mermaid \`flowchart TD\` (atau \`architecture\`) untuk memetakan teknologi, service, dan infrastruktur sistem.
+- **Data Flow Diagram (DFD)**: Gunakan Mermaid \`flowchart TD\` dengan bentuk entitas kotak \`[]\`, proses bulat \`()\`, dan data store silinder \`[()]\` untuk memetakan aliran data.
 
 ## 6. Database Schema
 Rancangan database dengan Mermaid **ERD** (\`erDiagram\`). Nama tabel, field utama, PK, FK, relasi. Setelah ERD, buat tabel penjelasan singkat. Schema HARUS sesuai fitur MVP.
@@ -120,7 +121,7 @@ ATURAN:
 - Gunakan kalimat objektif dan fungsional
 - Database schema HARUS nyambung dengan fitur
 - User flow HARUS sesuai role
-- WAJIB buat semua diagram berikut: Use Case (flowchart LR), Activity Diagram (stateDiagram-v2), Sequence Diagram, ERD, dan Architecture Diagram (flowchart TD).
+- WAJIB buat semua diagram berikut: Use Case (flowchart LR), Activity Diagram (stateDiagram-v2), Sequence Diagram, DFD (flowchart TD), ERD, dan Architecture Diagram (flowchart TD).
 - JANGAN mengarang fitur besar yang tidak diminta
 - Beri label "Opsional" untuk fitur tambahan
 - PRD harus realistis untuk MVP

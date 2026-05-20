@@ -17,19 +17,35 @@ function sanitizeMermaidChart(raw: string): string {
   // Remove any leading/trailing markdown code fence artifacts
   chart = chart.replace(/^```mermaid\s*/i, "").replace(/```\s*$/, "").trim();
 
-  // Fix common AI issues with erDiagram:
-  // Ensure field types don't have spaces or special chars that break parsing
-  // e.g., "string name" is fine, "string rack_location" is fine
-
-  // Fix sequenceDiagram issues:
-  // Replace unquoted labels with special chars in participant/Note lines
+  // Fix sequenceDiagram and erDiagram issues:
+  let inErDiagram = false;
   const lines = chart.split("\n");
+  
   const fixedLines = lines.map((line) => {
     const trimmed = line.trim();
 
-    // Skip empty lines and diagram type declarations
-    if (!trimmed || /^(sequenceDiagram|erDiagram|flowchart|graph|classDiagram|pie|gantt|stateDiagram|gitgraph)/.test(trimmed)) {
-      return line;
+    // Context tracking
+    if (trimmed.startsWith('erDiagram')) inErDiagram = true;
+    if (/^(sequenceDiagram|flowchart|graph|classDiagram|pie|gantt|stateDiagram|gitgraph)/.test(trimmed)) {
+      inErDiagram = false;
+    }
+
+    // Skip empty lines
+    if (!trimmed) return line;
+
+    // erDiagram fixes: remove parenthesis in types (e.g. varchar(255) -> varchar255)
+    // and replace dashes with underscores in field names.
+    if (inErDiagram && !trimmed.startsWith('erDiagram')) {
+      // If it's a field definition line (inside { }, no relationship arrows)
+      if (!trimmed.includes('{') && !trimmed.includes('}') && !trimmed.includes('--')) {
+        let fixedField = line.replace(/[()]/g, ''); // varchar(255) -> varchar255
+        fixedField = fixedField.replace(/-/g, '_'); // created-at -> created_at
+        return fixedField;
+      }
+      // If it's a table name definition with a dash (e.g. user-profiles { )
+      if (trimmed.includes('{') && trimmed.includes('-')) {
+        return line.replace(/([a-zA-Z0-9]+)-([a-zA-Z0-9]+)/g, '$1_$2');
+      }
     }
 
     // For sequenceDiagram: fix "participant X as Label With Special (Chars)"
@@ -43,6 +59,22 @@ function sanitizeMermaidChart(raw: string): string {
         }
       }
       return line;
+    }
+
+    // For flowchart: fix direct quoted nodes like: A --> "Some Label"
+    if (!inErDiagram && (line.includes('-->') || line.includes('-.->') || line.includes('->'))) {
+      // Fix left side: "Some Label" --> B
+      line = line.replace(/"([^"]+)"\s*(->|-->|-\.->)/g, (match, label, arrow) => {
+        const id = label.replace(/[^a-zA-Z0-9]/g, '_');
+        return `${id}["${label}"] ${arrow}`;
+      });
+      
+      // Fix right side: A --> "Some Label" or A -.->|text| "Some Label"
+      line = line.replace(/(->|-->|-\.->)(?:\|[^|]+\|)?\s*"([^"]+)"/g, (match, arrow, label) => {
+        const id = label.replace(/[^a-zA-Z0-9]/g, '_');
+        // We only want to replace the `"label"` part at the end of the match
+        return match.replace(`"${label}"`, `${id}["${label}"]`);
+      });
     }
 
     // For Note blocks: quote content with special chars
@@ -113,6 +145,12 @@ const MermaidRenderer = memo(function MermaidRenderer({
           },
           fontFamily: "Geist, ui-sans-serif, sans-serif",
           fontSize: 14,
+          flowchart: {
+            curve: 'step',
+          },
+          state: {
+            curve: 'step',
+          }
         });
 
         const sanitized = sanitizeMermaidChart(trimmed);
