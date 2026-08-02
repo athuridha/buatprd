@@ -175,7 +175,10 @@ body {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  display: block;
+  overflow-x: auto;
+  max-w-full: 100%;
 }
 
 .prose-prd th {

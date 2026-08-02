@@ -385,6 +385,7 @@ export default function Home() {
               isStreaming={isStreaming}
               onStartOver={handleStartOver}
               projectBrief={brief}
+              summary={summary}
             />
           )}
         </AnimatePresence>
