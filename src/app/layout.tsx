@@ -26,6 +26,8 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/context/AuthContext";
+import { ModelProvider } from "@/context/ModelContext";
+import { ChatProvider } from "@/context/ChatContext";
 import Navbar from "@/components/Navbar";
 
 export default function RootLayout({
@@ -38,10 +40,16 @@ export default function RootLayout({
       lang="id"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-[100dvh] flex flex-col bg-background text-foreground font-sans">
+      <body className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col bg-background text-foreground font-sans">
         <AuthProvider>
-          <Navbar />
-          {children}
+          <ModelProvider>
+            <ChatProvider>
+              <Navbar />
+              <main className="flex-1 h-0 min-h-0 overflow-y-auto flex flex-col relative">
+                {children}
+              </main>
+            </ChatProvider>
+          </ModelProvider>
         </AuthProvider>
       </body>
     </html>

@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const { brief } = await request.json();
+    const { brief, model } = await request.json();
 
     if (!brief || typeof brief !== "string" || brief.trim().length < 10) {
       return Response.json(
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const stream = await streamChatCompletion(
       ANALYZE_SYSTEM_PROMPT,
       `Berikut brief project dari user:\n\n"${brief.trim()}"\n\nAnalisis brief ini dan buat pertanyaan klarifikasi yang spesifik.`,
-      { temperature: 0.6, maxTokens: 4096 }
+      { temperature: 0.6, maxTokens: 4096, model }
     );
 
     const encoder = new TextEncoder();

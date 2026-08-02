@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { AnimatePresence } from "framer-motion";
 import { useAuth } from "@/context/AuthContext";
+import { useModel } from "@/context/ModelContext";
+import { useChat } from "@/context/ChatContext";
+import { ChatCircleText } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import PhaseIndicator from "@/components/ui/PhaseIndicator";
@@ -141,6 +146,8 @@ function parseSummary(raw: string): SummaryData | null {
 
 export default function Home() {
   const { user } = useAuth();
+  const { selectedModel } = useModel();
+  const { isChatOpen, openChat } = useChat();
   const [phase, setPhase] = useState<Phase>(1);
   const [brief, setBrief] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -202,7 +209,7 @@ export default function Home() {
     try {
       const raw = await streamFetch(
         "/api/analyze",
-        { brief: briefText },
+        { brief: briefText, model: selectedModel },
         () => {} // We don't stream the UI for analysis, just collect
       );
 
@@ -233,7 +240,7 @@ export default function Home() {
     try {
       const finalText = await streamFetch(
         "/api/generate-prd",
-        { brief: briefText, skipQuestions: true },
+        { brief: briefText, skipQuestions: true, model: selectedModel },
         (text) => setPrdMarkdown(text)
       );
       if (user) {
@@ -256,7 +263,7 @@ export default function Home() {
       try {
         const raw = await streamFetch(
           "/api/summarize",
-          { brief, answers },
+          { brief, answers, model: selectedModel },
           () => {}
         );
 
@@ -294,7 +301,7 @@ export default function Home() {
       try {
         const finalText = await streamFetch(
           "/api/generate-prd",
-          { brief, summary: confirmedSummary },
+          { brief, summary: confirmedSummary, model: selectedModel },
           (text) => setPrdMarkdown(text)
         );
         if (user) {

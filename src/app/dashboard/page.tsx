@@ -5,12 +5,14 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { Trash, CalendarBlank, FileText, ArrowLeft, ArrowCounterClockwise, Copy, Check, DownloadSimple } from "@phosphor-icons/react";
+import Link from "next/link";
+import { Trash, CalendarBlank, FileText, ArrowLeft, ArrowCounterClockwise, Copy, Check, DownloadSimple, ChatCircleText } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import MermaidRenderer from "@/components/MermaidRenderer";
 import GlassCard from "@/components/ui/GlassCard";
 import MagneticButton from "@/components/ui/MagneticButton";
+import PRDChatbot from "@/components/PRDChatbot";
 import { extractPRDTitle } from "@/lib/prd-utils";
 
 interface PRDDocument {
@@ -26,6 +28,7 @@ export default function Dashboard() {
   const [selectedPrd, setSelectedPrd] = useState<PRDDocument | null>(null);
   const [fetching, setFetching] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -219,6 +222,15 @@ export default function Dashboard() {
                   {selectedPrd.title}
                 </h3>
                 <div className="flex items-center gap-2">
+                  <Link href="/chat">
+                    <MagneticButton
+                      variant="primary"
+                      size="sm"
+                    >
+                      <ChatCircleText size={16} weight="fill" />
+                      Tanya AI PRD
+                    </MagneticButton>
+                  </Link>
                   <MagneticButton
                     variant="secondary"
                     size="sm"

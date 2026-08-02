@@ -5,7 +5,7 @@ const alibabaClient = new OpenAI({
   baseURL: process.env.ALIBABA_BASE_URL || "",
 });
 
-const DEFAULT_MODEL = process.env.ALIBABA_MODEL || "qwen3.7-max-2026-06-08";
+const DEFAULT_MODEL = process.env.ALIBABA_MODEL || "qwen3.7-max";
 
 export async function streamChatCompletion(
   systemPrompt: string,

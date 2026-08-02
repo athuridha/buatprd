@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useMemo, memo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useReactToPrint } from "react-to-print";
@@ -21,10 +22,12 @@ import {
   Code,
   ArrowRight,
   Archive,
+  ChatCircleText,
 } from "@phosphor-icons/react";
 import MagneticButton from "./ui/MagneticButton";
 import GlassCard from "./ui/GlassCard";
 import MermaidRenderer from "./MermaidRenderer";
+import PRDChatbot from "./PRDChatbot";
 import { useAuth } from "@/context/AuthContext";
 import { db, auth } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -143,6 +146,7 @@ export default function PRDOutput({
   const [showTOC, setShowTOC] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Module contents state
   const [instructionMD, setInstructionMD] = useState("");
@@ -422,6 +426,19 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
           >
             <List size={18} weight="bold" />
           </button>
+
+          <Link href="/chat">
+            <MagneticButton
+              variant="primary"
+              size="sm"
+              className="text-xs px-3 py-1.5 relative group overflow-hidden"
+              title="Tanyakan sesuatu tentang PRD ini kepada AI"
+            >
+              <ChatCircleText size={16} weight="fill" />
+              <span>Tanya AI PRD</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+            </MagneticButton>
+          </Link>
 
           {(!instructionMD || !moduleAMD || !moduleBMD || !moduleCMD) && (
             <MagneticButton

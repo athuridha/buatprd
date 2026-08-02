@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const { brief, summary } = await request.json();
+    const { brief, summary, model } = await request.json();
 
     if (!brief) {
       return Response.json({ error: "Brief diperlukan." }, { status: 400 });
@@ -31,7 +31,7 @@ Buatlah Modul B: API Route & Endpoint Specifications secara sangat detail mencak
     const stream = await streamChatCompletion(
       GENERATE_MODULE_B_SYSTEM_PROMPT,
       userMessage,
-      { temperature: 0.6, maxTokens: 4096 }
+      { temperature: 0.6, maxTokens: 4096, model }
     );
 
     const encoder = new TextEncoder();

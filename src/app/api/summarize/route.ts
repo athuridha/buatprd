@@ -10,9 +10,10 @@ interface QuestionAnswer {
 
 export async function POST(request: Request) {
   try {
-    const { brief, answers } = (await request.json()) as {
+    const { brief, answers, model } = (await request.json()) as {
       brief: string;
       answers: QuestionAnswer[];
+      model?: string;
     };
 
     if (!brief) {
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     const stream = await streamChatCompletion(
       SUMMARIZE_SYSTEM_PROMPT,
       userMessage,
-      { temperature: 0.5, maxTokens: 4096 }
+      { temperature: 0.5, maxTokens: 4096, model }
     );
 
     const encoder = new TextEncoder();

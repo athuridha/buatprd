@@ -18,10 +18,11 @@ interface SummaryData {
 
 export async function POST(request: Request) {
   try {
-    const { brief, summary, skipQuestions } = (await request.json()) as {
+    const { brief, summary, skipQuestions, model } = (await request.json()) as {
       brief: string;
       summary?: SummaryData;
       skipQuestions?: boolean;
+      model?: string;
     };
 
     if (!brief) {
@@ -65,7 +66,7 @@ Buat PRD final lengkap berdasarkan informasi di atas. Ikuti format PRD yang suda
     const stream = await streamChatCompletion(
       GENERATE_PRD_SYSTEM_PROMPT,
       userMessage,
-      { temperature: 0.6, maxTokens: 8192 }
+      { temperature: 0.6, maxTokens: 8192, model }
     );
 
     const encoder = new TextEncoder();
