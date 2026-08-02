@@ -15,6 +15,7 @@ import MagneticButton from "@/components/ui/MagneticButton";
 import PaymentModal from "@/components/PaymentModal";
 import DocSuiteViewer from "@/components/DocSuiteViewer";
 import { extractPRDTitle } from "@/lib/prd-utils";
+import { isOwnerUser } from "@/lib/quota";
 
 interface PRDDocument {
   id: string;
@@ -248,26 +249,29 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (selectedPrd && unlockedPRDs[selectedPrd.id]) {
+                      const isOwner = isOwnerUser(user);
+                      if (isOwner || (selectedPrd && unlockedPRDs[selectedPrd.id])) {
                         setShowSuiteViewer((prev) => !prev);
                       } else {
                         setIsPaymentModalOpen(true);
                       }
                     }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                      selectedPrd && unlockedPRDs[selectedPrd.id]
+                      isOwnerUser(user) || (selectedPrd && unlockedPRDs[selectedPrd.id])
                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
                         : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 border border-amber-400/40"
                     }`}
                     title={
-                      selectedPrd && unlockedPRDs[selectedPrd.id]
+                      isOwnerUser(user) || (selectedPrd && unlockedPRDs[selectedPrd.id])
                         ? "Tampilkan Paket 16 Dokumen"
                         : "Buka Paket 16 Dokumentasi Teknikal Project (Rp 50.000)"
                     }
                   >
                     <Crown size={16} weight="fill" />
                     <span>
-                      {selectedPrd && unlockedPRDs[selectedPrd.id]
+                      {isOwnerUser(user)
+                        ? "16-Doc Suite (Owner)"
+                        : selectedPrd && unlockedPRDs[selectedPrd.id]
                         ? "16-Doc Suite (Unlocked)"
                         : "16-Doc Suite (Rp 50k)"}
                     </span>

@@ -35,6 +35,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db, auth } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { extractPRDTitle } from "@/lib/prd-utils";
+import { isOwnerUser } from "@/lib/quota";
 
 interface PRDOutputProps {
   markdown: string;
@@ -178,6 +179,8 @@ export default function PRDOutput({
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
 
   const { user, signInWithGoogle } = useAuth();
+  const isOwner = isOwnerUser(user);
+  const effectiveIsUnlocked = isOwner || isDocSuiteUnlocked;
 
   // Current active content
   const activeContent = useMemo(() => {
@@ -479,26 +482,28 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
           <button
             type="button"
             onClick={() => {
-              if (isDocSuiteUnlocked) {
+              if (effectiveIsUnlocked) {
                 setActiveTab("suite");
               } else {
                 setIsPaymentModalOpen(true);
               }
             }}
             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-              isDocSuiteUnlocked
+              effectiveIsUnlocked
                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
                 : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 border border-amber-400/40"
             }`}
             title={
-              isDocSuiteUnlocked
+              effectiveIsUnlocked
                 ? "Buka Paket 16 Dokumen Teknikal"
                 : "Buka Paket 16 Dokumentasi Teknikal Project (Rp 50.000)"
             }
           >
             <Crown size={16} weight="fill" />
             <span>
-              {isDocSuiteUnlocked
+              {isOwner
+                ? "16-Doc Suite (Owner)"
+                : effectiveIsUnlocked
                 ? "16-Doc Suite (Unlocked)"
                 : "16-Doc Suite (Rp 50k)"}
             </span>

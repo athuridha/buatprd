@@ -574,7 +574,13 @@ export default function ChatPage() {
 
             {user && (
               <span className="text-[10px] sm:text-xs font-mono px-2 py-0.5 rounded-full bg-surface-2 border border-border/60 text-muted flex-shrink-0">
-                Kuota: <strong className="text-accent">{quota.chatCount}/10</strong>
+                {quota.isOwner ? (
+                  <strong className="text-emerald-400 font-bold">Owner (Full Akses)</strong>
+                ) : (
+                  <>
+                    Kuota: <strong className="text-accent">{quota.chatCount}/10</strong>
+                  </>
+                )}
               </span>
             )}
           </div>

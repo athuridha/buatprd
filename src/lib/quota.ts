@@ -2,6 +2,13 @@
 
 import { User } from "firebase/auth";
 
+export const OWNER_EMAILS = ["athuridhaa@gmail.com"];
+
+export function isOwnerUser(user: User | null): boolean {
+  if (!user || !user.email) return false;
+  return OWNER_EMAILS.includes(user.email.toLowerCase().trim());
+}
+
 export const GUEST_FREE_PRD_LIMIT = 3;
 export const USER_FREE_PRD_LIMIT = 5;
 export const USER_FREE_CHAT_LIMIT = 10;
@@ -17,6 +24,7 @@ export interface QuotaStatus {
   chatCount: number;
   chatLimit: number;
   chatReason?: "auth_required" | "limit_reached";
+  isOwner?: boolean;
 }
 
 export function getPRDQuotaStatus(user: User | null): QuotaStatus {
@@ -31,6 +39,22 @@ export function getPRDQuotaStatus(user: User | null): QuotaStatus {
       canUseChatbot: !!user,
       chatCount: 0,
       chatLimit: USER_FREE_CHAT_LIMIT,
+    };
+  }
+
+  // Owner Full Access Override
+  if (isOwnerUser(user)) {
+    return {
+      canGeneratePRD: true,
+      prdCount: 0,
+      prdLimit: 999999,
+      extraPrdQuota: 999999,
+      requiresAuth: false,
+      requiresPayment: false,
+      canUseChatbot: true,
+      chatCount: 0,
+      chatLimit: 999999,
+      isOwner: true,
     };
   }
 
@@ -103,6 +127,7 @@ export function getPRDQuotaStatus(user: User | null): QuotaStatus {
 
 export function incrementPRDCount(user: User | null): number {
   if (typeof window === "undefined") return 0;
+  if (isOwnerUser(user)) return 0; // Owner does not increment count
 
   if (!user) {
     const savedCount = localStorage.getItem("buatprd_guest_prd_count");
@@ -122,6 +147,7 @@ export function incrementPRDCount(user: User | null): number {
 
 export function incrementChatCount(user: User | null): number {
   if (typeof window === "undefined" || !user) return 0;
+  if (isOwnerUser(user)) return 0; // Owner does not increment count
 
   const key = `buatprd_chat_count_${user.uid}`;
   const savedCount = localStorage.getItem(key);
