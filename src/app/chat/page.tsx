@@ -29,6 +29,7 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import ModelSelector from "@/components/ModelSelector";
 import Link from "next/link";
 import { extractPRDTitle } from "@/lib/prd-utils";
+import { getPRDQuotaStatus, incrementChatCount } from "@/lib/quota";
 
 export interface Message {
   id: string;
@@ -80,7 +81,8 @@ const LOCAL_STORAGE_KEY = "buatprd_chat_history_v1";
 
 export default function ChatPage() {
   const { selectedModel } = useModel();
-  const { user } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
+  const quota = getPRDQuotaStatus(user);
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -266,6 +268,18 @@ export default function ChatPage() {
   const handleSendMessage = async (textToSend?: string) => {
     const messageText = (textToSend || input).trim();
     if (!messageText || isStreaming) return;
+
+    if (!user) {
+      setError("Silakan Sign In dengan Google untuk menggunakan AI Chatbot.");
+      return;
+    }
+
+    if (quota.chatCount >= 10) {
+      setError("Batas kuota 10 pertanyaan AI Chatbot gratis telah tercapai (10/10).");
+      return;
+    }
+
+    incrementChatCount(user);
 
     let targetSessionId = activeSessionId;
     let currentSessions = [...sessions];
@@ -506,8 +520,30 @@ export default function ChatPage() {
         )}
       </AnimatePresence>
 
-      {/* Main Chat Content View */}
-      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background">
+      {/* Main Chat Content Area */}
+      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background relative">
+        {/* Auth Required Overlay for Guests */}
+        {!user && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md">
+            <div className="max-w-md w-full bg-surface-1 border border-border rounded-3xl p-8 text-center space-y-4 shadow-2xl">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-md">
+                <Robot size={36} weight="fill" />
+              </div>
+              <h3 className="text-xl font-bold text-foreground">
+                Sign In untuk AI Chatbot
+              </h3>
+              <p className="text-xs text-muted leading-relaxed">
+                Fitur AI Chatbot membutuhkan akun. Silakan Sign In dengan Google untuk mendapatkan kuota <strong>10 pertanyaan gratis</strong> seputar arsitektur & PRD!
+              </p>
+              <button
+                onClick={signInWithGoogle}
+                className="w-full py-3 px-4 rounded-xl bg-accent text-zinc-950 font-bold text-sm hover:bg-accent-hover transition-all cursor-pointer shadow-lg shadow-accent-glow"
+              >
+                Sign In dengan Google
+              </button>
+            </div>
+          </div>
+        )}
         {/* Main Header Toolbar */}
         <div className="h-14 px-3 sm:px-6 border-b border-border/40 bg-surface-1/40 backdrop-blur-md flex items-center justify-between flex-shrink-0 gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -535,6 +571,12 @@ export default function ChatPage() {
             <h1 className="font-bold text-xs sm:text-base truncate max-w-[130px] sm:max-w-[320px]">
               {activeSession?.title || "AI Chatbot Assistant"}
             </h1>
+
+            {user && (
+              <span className="text-[10px] sm:text-xs font-mono px-2 py-0.5 rounded-full bg-surface-2 border border-border/60 text-muted flex-shrink-0">
+                Kuota: <strong className="text-accent">{quota.chatCount}/10</strong>
+              </span>
+            )}
           </div>
 
           {/* Active PRD Context Badge & Switcher */}

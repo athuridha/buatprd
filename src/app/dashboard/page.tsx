@@ -3,16 +3,17 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash, CalendarBlank, FileText, ArrowLeft, ArrowCounterClockwise, Copy, Check, DownloadSimple, ChatCircleText } from "@phosphor-icons/react";
+import { Trash, CalendarBlank, FileText, ArrowLeft, ArrowCounterClockwise, Copy, Check, DownloadSimple, ChatCircleText, Crown } from "@phosphor-icons/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import MermaidRenderer from "@/components/MermaidRenderer";
 import GlassCard from "@/components/ui/GlassCard";
 import MagneticButton from "@/components/ui/MagneticButton";
-import PRDChatbot from "@/components/PRDChatbot";
+import PaymentModal from "@/components/PaymentModal";
+import DocSuiteViewer from "@/components/DocSuiteViewer";
 import { extractPRDTitle } from "@/lib/prd-utils";
 
 interface PRDDocument {
@@ -20,6 +21,7 @@ interface PRDDocument {
   title: string;
   content: string;
   createdAt: any;
+  isSuiteUnlocked?: boolean;
 }
 
 export default function Dashboard() {
@@ -28,6 +30,9 @@ export default function Dashboard() {
   const [selectedPrd, setSelectedPrd] = useState<PRDDocument | null>(null);
   const [fetching, setFetching] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [unlockedPRDs, setUnlockedPRDs] = useState<Record<string, boolean>>({});
+  const [showSuiteViewer, setShowSuiteViewer] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const router = useRouter();
 
@@ -49,8 +54,10 @@ export default function Dashboard() {
         );
         const querySnapshot = await getDocs(q);
         const docsList: PRDDocument[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
+        const initialUnlocked: Record<string, boolean> = {};
+
+        querySnapshot.forEach((docSnap) => {
+          const data = docSnap.data();
           const content = data.content || "";
           let title = data.title || "";
           if (
@@ -63,11 +70,23 @@ export default function Dashboard() {
           ) {
             title = extractPRDTitle(content);
           }
+
+          const cleanKey = `unlocked_suite_${title.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+          const isUnlocked =
+            data.isSuiteUnlocked === true ||
+            localStorage.getItem(`unlocked_suite_${docSnap.id}`) === "true" ||
+            localStorage.getItem(cleanKey) === "true";
+
+          if (isUnlocked) {
+            initialUnlocked[docSnap.id] = true;
+          }
+
           docsList.push({
-            id: doc.id,
+            id: docSnap.id,
             title,
             content,
             createdAt: data.createdAt,
+            isSuiteUnlocked: isUnlocked,
           });
         });
 
@@ -82,9 +101,13 @@ export default function Dashboard() {
           return timeB - timeA;
         });
 
+        setUnlockedPRDs(initialUnlocked);
         setPrds(docsList);
         if (docsList.length > 0) {
           setSelectedPrd(docsList[0]);
+          if (initialUnlocked[docsList[0].id]) {
+            setShowSuiteViewer(true);
+          }
         }
       } catch (error) {
         console.error("Error fetching PRDs:", error);
@@ -222,6 +245,34 @@ export default function Dashboard() {
                   {selectedPrd.title}
                 </h3>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedPrd && unlockedPRDs[selectedPrd.id]) {
+                        setShowSuiteViewer((prev) => !prev);
+                      } else {
+                        setIsPaymentModalOpen(true);
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                      selectedPrd && unlockedPRDs[selectedPrd.id]
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
+                        : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 border border-amber-400/40"
+                    }`}
+                    title={
+                      selectedPrd && unlockedPRDs[selectedPrd.id]
+                        ? "Tampilkan Paket 16 Dokumen"
+                        : "Buka Paket 16 Dokumentasi Teknikal Project (Rp 50.000)"
+                    }
+                  >
+                    <Crown size={16} weight="fill" />
+                    <span>
+                      {selectedPrd && unlockedPRDs[selectedPrd.id]
+                        ? "16-Doc Suite (Unlocked)"
+                        : "16-Doc Suite (Rp 50k)"}
+                    </span>
+                  </button>
+
                   <Link href="/chat">
                     <MagneticButton
                       variant="primary"
@@ -255,35 +306,29 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Content Render */}
+              {/* Content Render / Suite Render */}
               <div className="flex-1 overflow-y-auto p-6 prose-prd">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    pre({ children }) {
-                      const child = Array.isArray(children) ? children[0] : children;
-                      if (
-                        child &&
-                        typeof child === "object" &&
-                        "props" in child &&
-                        child.props?.className?.includes("language-mermaid")
-                      ) {
-                        const codeContent = String(child.props.children).replace(/\n$/, "");
-                        return <MermaidRenderer chart={codeContent} />;
+                {showSuiteViewer && selectedPrd && unlockedPRDs[selectedPrd.id] ? (
+                  <DocSuiteViewer
+                    prdContent={selectedPrd.content}
+                    prdTitle={selectedPrd.title}
+                  />
+                ) : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code({ node, inline, className, children, ...props }: any) {
+                        const match = /language-(\w+)/.exec(className || "");
+                        if (!inline && match && match[1] === "mermaid") {
+                          return <MermaidRenderer chart={String(children).replace(/\n$/, "")} />;
+                        }
+                        return <code className={className}>{children}</code>;
                       }
-                      return <pre className="p-4 rounded-xl bg-surface-2 border border-border overflow-x-auto">{children}</pre>;
-                    },
-                    code({ children, className }) {
-                      const isInline = !className;
-                      if (isInline) {
-                        return <code className="bg-surface-2 border border-border/40 px-1.5 py-0.5 rounded text-sm text-accent font-mono">{children}</code>;
-                      }
-                      return <code className={className}>{children}</code>;
-                    }
-                  }}
-                >
-                  {selectedPrd.content}
-                </ReactMarkdown>
+                    }}
+                  >
+                    {selectedPrd.content}
+                  </ReactMarkdown>
+                )}
               </div>
             </GlassCard>
           ) : (
@@ -292,6 +337,29 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Pakasir QRIS Payment Modal */}
+      {selectedPrd && (
+        <PaymentModal
+          isOpen={isPaymentModalOpen}
+          onClose={() => setIsPaymentModalOpen(false)}
+          onPaymentSuccess={async (orderId) => {
+            if (!selectedPrd) return;
+            const cleanKey = `unlocked_suite_${selectedPrd.title.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+            localStorage.setItem(`unlocked_suite_${selectedPrd.id}`, "true");
+            localStorage.setItem(cleanKey, "true");
+            setUnlockedPRDs((prev) => ({ ...prev, [selectedPrd.id]: true }));
+            setIsPaymentModalOpen(false);
+            setShowSuiteViewer(true);
+            try {
+              await updateDoc(doc(db, "prds", selectedPrd.id), { isSuiteUnlocked: true });
+            } catch (err) {
+              console.error("Failed to update Firestore unlock status:", err);
+            }
+          }}
+          prdTitle={selectedPrd.title}
+        />
       )}
     </div>
   );

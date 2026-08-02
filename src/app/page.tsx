@@ -15,7 +15,9 @@ import BriefInput from "@/components/BriefInput";
 import QuestionsPanel from "@/components/QuestionsPanel";
 import SummaryConfirm from "@/components/SummaryConfirm";
 import PRDOutput from "@/components/PRDOutput";
+import PaymentModal from "@/components/PaymentModal";
 import { extractPRDTitle } from "@/lib/prd-utils";
+import { getPRDQuotaStatus, incrementPRDCount, addExtraPRDQuota } from "@/lib/quota";
 
 /* ---- Types ---- */
 interface AnalysisData {
@@ -145,13 +147,18 @@ function parseSummary(raw: string): SummaryData | null {
 }
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
   const { selectedModel } = useModel();
   const { isChatOpen, openChat } = useChat();
   const [phase, setPhase] = useState<Phase>(1);
   const [brief, setBrief] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Quota & Payment Modals
+  const [isQuotaPaymentModalOpen, setIsQuotaPaymentModalOpen] = useState(false);
+  const [authPromptModalOpen, setAuthPromptModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const autoSavePRD = useCallback(
     async (content: string, briefText?: string, summaryData?: SummaryData | null) => {
@@ -230,6 +237,21 @@ export default function Home() {
 
   /* ---- Phase 1 alt: Skip to generate ---- */
   const handleSkipToGenerate = useCallback(async (briefText: string) => {
+    const quota = getPRDQuotaStatus(user);
+    if (!quota.canGeneratePRD) {
+      if (quota.requiresAuth) {
+        setPendingAction(() => () => handleSkipToGenerate(briefText));
+        setAuthPromptModalOpen(true);
+        return;
+      }
+      if (quota.requiresPayment) {
+        setPendingAction(() => () => handleSkipToGenerate(briefText));
+        setIsQuotaPaymentModalOpen(true);
+        return;
+      }
+    }
+
+    incrementPRDCount(user);
     setBrief(briefText);
     setIsLoading(true);
     setIsStreaming(true);
@@ -252,7 +274,7 @@ export default function Home() {
       setIsLoading(false);
       setIsStreaming(false);
     }
-  }, [user, autoSavePRD]);
+  }, [user, selectedModel, autoSavePRD]);
 
   /* ---- Phase 2: Submit Answers → Summarize ---- */
   const handleSubmitAnswers = useCallback(
@@ -291,6 +313,21 @@ export default function Home() {
   /* ---- Phase 3: Confirm → Generate PRD ---- */
   const handleConfirmGenerate = useCallback(
     async (confirmedSummary: SummaryData) => {
+      const quota = getPRDQuotaStatus(user);
+      if (!quota.canGeneratePRD) {
+        if (quota.requiresAuth) {
+          setPendingAction(() => () => handleConfirmGenerate(confirmedSummary));
+          setAuthPromptModalOpen(true);
+          return;
+        }
+        if (quota.requiresPayment) {
+          setPendingAction(() => () => handleConfirmGenerate(confirmedSummary));
+          setIsQuotaPaymentModalOpen(true);
+          return;
+        }
+      }
+
+      incrementPRDCount(user);
       setSummary(confirmedSummary);
       setIsLoading(true);
       setIsStreaming(true);
@@ -402,6 +439,54 @@ export default function Home() {
       <footer className="border-t border-border/30 py-4 text-center text-xs text-muted-foreground/50">
         BuatPRD — AI-Assisted PRD Generator for Vibe Coding
       </footer>
+      {/* Quota Payment Modal (Rp 15.000) */}
+      <PaymentModal
+        isOpen={isQuotaPaymentModalOpen}
+        onClose={() => setIsQuotaPaymentModalOpen(false)}
+        onPaymentSuccess={(orderId) => {
+          addExtraPRDQuota(user, 5);
+          setIsQuotaPaymentModalOpen(false);
+          if (pendingAction) {
+            pendingAction();
+            setPendingAction(null);
+          }
+        }}
+        amount={15000}
+        type="prd_quota"
+        title="Top Up Quota PRD (Rp 15.000)"
+        description="Beli 5 Kuota Pembuatan PRD Tambahan via Pakasir QRIS"
+      />
+
+      {/* Guest Auth Required Modal (3/3 Limit Reached) */}
+      {authPromptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+          <div className="max-w-md w-full bg-surface-1 border border-border rounded-3xl p-8 text-center space-y-4 shadow-2xl">
+            <h3 className="text-xl font-bold text-foreground">Batas PRD Gratis Guest (3/3) Tersebab</h3>
+            <p className="text-xs text-muted leading-relaxed">
+              Anda telah menggunakan 3 kuota PRD gratis tanpa akun. Silakan <strong>Sign In dengan Google</strong> untuk mendapatkan <strong>5 kuota PRD gratis</strong>!
+            </p>
+            <button
+              onClick={async () => {
+                setAuthPromptModalOpen(false);
+                await signInWithGoogle();
+                if (pendingAction) {
+                  pendingAction();
+                  setPendingAction(null);
+                }
+              }}
+              className="w-full py-3 px-4 rounded-xl bg-accent text-zinc-950 font-bold text-sm hover:bg-accent-hover transition-all cursor-pointer shadow-lg shadow-accent-glow"
+            >
+              Sign In dengan Google (Gratis 5 PRD)
+            </button>
+            <button
+              onClick={() => setAuthPromptModalOpen(false)}
+              className="text-xs text-muted hover:text-foreground hover:underline block mx-auto cursor-pointer"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

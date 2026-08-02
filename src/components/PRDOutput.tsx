@@ -23,11 +23,14 @@ import {
   ArrowRight,
   Archive,
   ChatCircleText,
+  Crown,
 } from "@phosphor-icons/react";
 import MagneticButton from "./ui/MagneticButton";
 import GlassCard from "./ui/GlassCard";
 import MermaidRenderer from "./MermaidRenderer";
 import PRDChatbot from "./PRDChatbot";
+import PaymentModal from "./PaymentModal";
+import DocSuiteViewer from "./DocSuiteViewer";
 import { useAuth } from "@/context/AuthContext";
 import { db, auth } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -41,7 +44,7 @@ interface PRDOutputProps {
   summary?: any;
 }
 
-type TabType = "prd" | "instruction" | "module_a" | "module_b" | "module_c";
+type TabType = "prd" | "instruction" | "module_a" | "module_b" | "module_c" | "suite";
 
 /* Check if a mermaid code block is complete */
 function isCompleteMermaidBlock(md: string, blockContent: string): boolean {
@@ -140,13 +143,29 @@ export default function PRDOutput({
   const scrollRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const autoTriggeredRef = useRef(false);
-
-  const [activeTab, setActiveTab] = useState<TabType>("prd");
   const [copied, setCopied] = useState(false);
+  const [isCopiedMarkdown, setIsCopiedMarkdown] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>("prd");
+
+  // Premium 16-Doc Suite States
+  const [isDocSuiteUnlocked, setIsDocSuiteUnlocked] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  const prdTitle = useMemo(() => extractPRDTitle(markdown), [markdown]);
+
+  // Check permanent unlock state from localStorage
+  useEffect(() => {
+    if (!prdTitle) return;
+    const cleanKey = `unlocked_suite_${prdTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    const isUnlocked = localStorage.getItem(cleanKey) === "true";
+    if (isUnlocked) {
+      setIsDocSuiteUnlocked(true);
+    }
+  }, [prdTitle]);
 
   // Module contents state
   const [instructionMD, setInstructionMD] = useState("");
@@ -304,7 +323,7 @@ export default function PRDOutput({
     }
   }, [activeContent]);
 
-  const getDownloadFileName = () => {
+  const getDownloadFileName = (): string => {
     switch (activeTab) {
       case "prd":
         return "prd_document.md";
@@ -316,6 +335,10 @@ export default function PRDOutput({
         return "MODUL_B_API_SPECS.md";
       case "module_c":
         return "MODUL_C_VIBE_PROMPTS.md";
+      case "suite":
+        return "DOCUMENTATION_SUITE.md";
+      default:
+        return "PRD_DOCUMENT.md";
     }
   };
 
@@ -401,37 +424,50 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mb-4"
+        className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 pb-3 border-b border-border/40"
       >
-        <div className="flex items-center gap-2 sm:gap-3">
-          <h2 className="text-base sm:text-xl font-bold tracking-tight">PRD Architect Output</h2>
-          {(isCurrentStreaming || isModuleGenerating || isBatchGenerating) && (
-            <div className="flex items-center gap-1.5 text-xs text-accent bg-accent-muted px-2 py-0.5 rounded-full border border-accent/20">
-              <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
-              <span>{isBatchGenerating ? "Generating All..." : "Generating..."}</span>
-            </div>
-          )}
+        {/* Title & Status */}
+        <div className="flex items-center justify-between w-full lg:w-auto gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => setShowTOC((p) => !p)}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                showTOC
+                  ? "bg-accent-muted text-accent border-accent/40"
+                  : "bg-surface-2 text-muted hover:text-foreground border-border/60"
+              }`}
+              title="Table of Contents"
+              id="toc-toggle"
+            >
+              <List size={18} weight="bold" />
+            </button>
+            <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground">
+              PRD Architect Output
+            </h2>
+            {(isCurrentStreaming || isModuleGenerating || isBatchGenerating) && (
+              <div className="flex items-center gap-1.5 text-xs text-accent bg-accent-muted px-2 py-0.5 rounded-full border border-accent/20">
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
+                <span>{isBatchGenerating ? "Generating All..." : "Generating..."}</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={onStartOver}
+            className="lg:hidden text-xs px-2.5 py-1.5 rounded-xl bg-surface-2 text-muted hover:text-foreground border border-border/60 flex items-center gap-1.5"
+          >
+            <ArrowCounterClockwise size={14} weight="bold" />
+            <span>Reset</span>
+          </button>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap w-full md:w-auto justify-start md:justify-end">
-          <button
-            onClick={() => setShowTOC((p) => !p)}
-            className={`p-2 rounded-lg transition-colors cursor-pointer ${
-              showTOC
-                ? "bg-accent-muted text-accent"
-                : "text-muted hover:text-foreground hover:bg-surface-3"
-            }`}
-            title="Table of Contents"
-            id="toc-toggle"
-          >
-            <List size={18} weight="bold" />
-          </button>
-
-          <Link href="/chat">
+        {/* Header Action Toolbar Row */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin max-w-full py-1">
+          <Link href="/chat" className="flex-shrink-0">
             <MagneticButton
               variant="primary"
               size="sm"
-              className="text-xs px-3 py-1.5 relative group overflow-hidden"
+              className="text-xs px-3 py-1.5 font-bold"
               title="Tanyakan sesuatu tentang PRD ini kepada AI"
             >
               <ChatCircleText size={16} weight="fill" />
@@ -440,17 +476,44 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             </MagneticButton>
           </Link>
 
+          <button
+            type="button"
+            onClick={() => {
+              if (isDocSuiteUnlocked) {
+                setActiveTab("suite");
+              } else {
+                setIsPaymentModalOpen(true);
+              }
+            }}
+            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+              isDocSuiteUnlocked
+                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
+                : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 border border-amber-400/40"
+            }`}
+            title={
+              isDocSuiteUnlocked
+                ? "Buka Paket 16 Dokumen Teknikal"
+                : "Buka Paket 16 Dokumentasi Teknikal Project (Rp 50.000)"
+            }
+          >
+            <Crown size={16} weight="fill" />
+            <span>
+              {isDocSuiteUnlocked
+                ? "16-Doc Suite (Unlocked)"
+                : "16-Doc Suite (Rp 50k)"}
+            </span>
+          </button>
+
           {(!instructionMD || !moduleAMD || !moduleBMD || !moduleCMD) && (
             <MagneticButton
               variant="secondary"
               size="sm"
               onClick={handleGenerateAllModules}
               disabled={isBatchGenerating || !!generatingTab}
-              className="text-xs px-2.5 py-1.5"
+              className="text-xs px-2.5 py-1.5 flex-shrink-0"
             >
               <Sparkle size={14} weight="fill" className={isBatchGenerating ? "animate-spin" : ""} />
-              <span className="hidden sm:inline">{isBatchGenerating ? "Generating..." : "Generate Semua Modul"}</span>
-              <span className="sm:hidden">Generate All</span>
+              <span>{isBatchGenerating ? "Generating..." : "Generate Semua Modul"}</span>
             </MagneticButton>
           )}
 
@@ -459,7 +522,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             size="sm"
             onClick={handleCopy}
             disabled={isCurrentStreaming || isModuleGenerating || !activeContent}
-            className="text-xs px-2.5 py-1.5"
+            className="text-xs px-2.5 py-1.5 flex-shrink-0"
           >
             {copied ? <Check size={15} weight="bold" /> : <Copy size={15} weight="bold" />}
             <span>{copied ? "Copied" : "Copy"}</span>
@@ -470,7 +533,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             size="sm"
             onClick={handleDownload}
             disabled={isCurrentStreaming || isModuleGenerating || !activeContent}
-            className="text-xs px-2.5 py-1.5"
+            className="text-xs px-2.5 py-1.5 flex-shrink-0"
           >
             <DownloadSimple size={15} weight="bold" />
             <span>.md</span>
@@ -481,7 +544,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             size="sm"
             onClick={handleDownloadZip}
             disabled={isStreaming || !markdown}
-            className="text-xs px-2.5 py-1.5"
+            className="text-xs px-2.5 py-1.5 flex-shrink-0 font-bold"
             title="Download Semua Modul & Document sebagai ZIP"
           >
             <Archive size={15} weight="bold" />
@@ -493,7 +556,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             size="sm"
             onClick={handlePrint}
             disabled={isCurrentStreaming || isModuleGenerating || !activeContent}
-            className="text-xs px-2.5 py-1.5"
+            className="text-xs px-2.5 py-1.5 flex-shrink-0"
           >
             <DownloadSimple size={15} weight="bold" />
             <span>.pdf</span>
@@ -504,16 +567,20 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             size="sm"
             onClick={handleSaveToCloud}
             disabled={isStreaming || !markdown || isSaving}
-            className="text-xs px-2.5 py-1.5"
+            className="text-xs px-2.5 py-1.5 flex-shrink-0"
           >
             <CloudArrowUp size={15} weight="bold" className={isSaving ? "animate-pulse" : ""} />
             <span>{isSaving ? "Saving..." : saveSuccess ? "Saved!" : "Save"}</span>
           </MagneticButton>
 
-          <MagneticButton variant="ghost" size="sm" onClick={onStartOver} className="text-xs px-2.5 py-1.5">
+          <MagneticButton
+            variant="ghost"
+            size="sm"
+            onClick={onStartOver}
+            className="text-xs px-2.5 py-1.5 flex-shrink-0 hidden lg:flex"
+          >
             <ArrowCounterClockwise size={15} weight="bold" />
-            <span className="hidden sm:inline">Mulai Ulang</span>
-            <span className="sm:hidden">Reset</span>
+            <span>Mulai Ulang</span>
           </MagneticButton>
         </div>
       </motion.div>
@@ -795,7 +862,34 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             </GlassCard>
           </motion.div>
         )}
+
+        {/* 16-Doc Suite View Tab */}
+        {activeTab === "suite" && isDocSuiteUnlocked && (
+          <div className="mt-6">
+            <DocSuiteViewer
+              prdContent={markdown}
+              projectBrief={projectBrief}
+              prdTitle={prdTitle}
+            />
+          </div>
+        )}
       </div>
+
+      {/* Pakasir QRIS Payment Modal */}
+      <PaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        onPaymentSuccess={(orderId) => {
+          setIsDocSuiteUnlocked(true);
+          setIsPaymentModalOpen(false);
+          setActiveTab("suite");
+          if (prdTitle) {
+            const cleanKey = `unlocked_suite_${prdTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+            localStorage.setItem(cleanKey, "true");
+          }
+        }}
+        prdTitle={prdTitle}
+      />
     </motion.div>
   );
 }

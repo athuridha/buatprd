@@ -1,6 +1,5 @@
 "use client";
 
-import { motion, useMotionValue, useTransform } from "framer-motion";
 import { useRef, type ReactNode } from "react";
 
 interface MagneticButtonProps {
@@ -28,44 +27,22 @@ export default function MagneticButton({
   title,
   type = "button",
 }: MagneticButtonProps) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const rotateX = useTransform(y, [-30, 30], [4, -4]);
-  const rotateY = useTransform(x, [-30, 30], [-4, 4]);
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (!ref.current || disabled || isLoading) return;
-    const rect = ref.current.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const deltaX = (e.clientX - centerX) * 0.15;
-    const deltaY = (e.clientY - centerY) * 0.15;
-    x.set(deltaX);
-    y.set(deltaY);
-  };
-
-  const handleMouseLeave = () => {
-    x.set(0);
-    y.set(0);
-  };
-
   const baseClasses =
-    "relative inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-colors focus-ring cursor-pointer select-none";
+    "relative inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all duration-150 focus-ring cursor-pointer select-none";
 
   const sizeClasses = {
-    sm: "px-4 py-2 text-sm",
-    md: "px-6 py-3 text-base",
-    lg: "px-8 py-4 text-lg",
+    sm: "px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm",
+    md: "px-5 py-2.5 text-sm sm:px-6 sm:py-3 sm:text-base",
+    lg: "px-7 py-3 text-base sm:px-8 sm:py-4 sm:text-lg",
   };
 
   const variantClasses = {
     primary:
-      "bg-accent text-zinc-950 hover:bg-accent-hover active:scale-[0.98] shadow-lg shadow-accent-glow",
+      "bg-accent text-zinc-950 hover:bg-accent-hover active:bg-accent/90 shadow-md shadow-accent-glow border border-accent/40",
     secondary:
-      "bg-surface-3 text-foreground border border-border hover:bg-card-hover hover:border-border-light active:scale-[0.98]",
+      "bg-surface-2 text-foreground border border-border/80 hover:bg-surface-3 hover:border-border-light active:bg-surface-3/80",
     ghost:
-      "text-muted hover:text-foreground hover:bg-surface-3 active:scale-[0.98]",
+      "text-muted hover:text-foreground hover:bg-surface-2/80 active:bg-surface-3/80",
   };
 
   const disabledClasses =
@@ -74,29 +51,17 @@ export default function MagneticButton({
       : "";
 
   return (
-    <motion.button
-      ref={ref}
+    <button
       type={type}
       id={id}
       title={title}
       className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${disabledClasses} ${className}`}
-      style={{
-        x,
-        y,
-        rotateX,
-        rotateY,
-        transformStyle: "preserve-3d",
-      }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
       onClick={disabled || isLoading ? undefined : onClick}
-      whileTap={!disabled && !isLoading ? { scale: 0.97 } : undefined}
-      transition={{ type: "spring", stiffness: 200, damping: 20 }}
       disabled={disabled || isLoading}
     >
       {isLoading && (
         <svg
-          className="animate-spin h-4 w-4"
+          className="animate-spin h-3.5 w-3.5"
           viewBox="0 0 24 24"
           fill="none"
         >
@@ -116,6 +81,6 @@ export default function MagneticButton({
         </svg>
       )}
       {children}
-    </motion.button>
+    </button>
   );
 }
