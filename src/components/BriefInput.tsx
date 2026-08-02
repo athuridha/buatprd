@@ -32,6 +32,7 @@ export default function BriefInput({
 }: BriefInputProps) {
   const [brief, setBrief] = useState("");
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -50,6 +51,41 @@ export default function BriefInput({
       )}px`;
     }
   }, [brief]);
+
+  const handleEnhance = async () => {
+    if (!brief.trim() || isEnhancing || isLoading) return;
+    setIsEnhancing(true);
+
+    try {
+      const res = await fetch("/api/enhance-brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brief: brief.trim() }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Gagal memperkaya brief.");
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      let enhancedText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        enhancedText += chunk;
+        setBrief(enhancedText);
+      }
+    } catch (err) {
+      console.error("Enhance brief error:", err);
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
 
   const canSubmit = brief.trim().length >= 10;
 
@@ -108,9 +144,25 @@ export default function BriefInput({
               <span className="text-xs font-medium tracking-wide uppercase">
                 Project Brief
               </span>
-              <span className="ml-auto text-xs font-mono tabular-nums">
-                {brief.length}
-              </span>
+              <div className="ml-auto flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleEnhance}
+                  disabled={!brief.trim() || isEnhancing || isLoading}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                    brief.trim().length > 0
+                      ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 cursor-pointer hover:scale-105 active:scale-95"
+                      : "bg-surface-2 text-muted-foreground/50 border-border/40 cursor-not-allowed opacity-60"
+                  }`}
+                  title="Sempurnakan Brief dengan AI"
+                >
+                  <Sparkle weight="fill" size={13} className={isEnhancing ? "animate-spin" : ""} />
+                  <span>{isEnhancing ? "Menyempurnakan..." : "Sempurnakan Brief"}</span>
+                </button>
+                <span className="text-xs font-mono tabular-nums">
+                  {brief.length}
+                </span>
+              </div>
             </div>
 
             <textarea

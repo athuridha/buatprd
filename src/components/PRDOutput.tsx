@@ -12,6 +12,10 @@ import {
   Check,
   List,
   CloudArrowUp,
+  FolderSimple,
+  Plugs,
+  TerminalWindow,
+  FileText,
 } from "@phosphor-icons/react";
 import MagneticButton from "./ui/MagneticButton";
 import GlassCard from "./ui/GlassCard";
@@ -19,6 +23,7 @@ import MermaidRenderer from "./MermaidRenderer";
 import { useAuth } from "@/context/AuthContext";
 import { db, auth } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { extractPRDTitle } from "@/lib/prd-utils";
 
 interface PRDOutputProps {
   markdown: string;
@@ -82,6 +87,45 @@ function extractTOC(md: string): { level: number; text: string; id: string }[] {
   return headings;
 }
 
+function getFilteredMarkdown(md: string, activeModule: string): string {
+  if (activeModule === "all") return md;
+
+  const lines = md.split("\n");
+  let capturing = false;
+  let result: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lower = line.toLowerCase();
+
+    if (activeModule === "structure") {
+      if (lower.includes("12. implementation module a") || lower.includes("folder structure") || lower.includes("project file")) {
+        capturing = true;
+      } else if (capturing && /^##\s+1[3-9]\./.test(line)) {
+        break;
+      }
+    } else if (activeModule === "api") {
+      if (lower.includes("13. implementation module b") || lower.includes("api route") || lower.includes("endpoint specification") || lower.includes("6. database schema")) {
+        capturing = true;
+      } else if (capturing && (/^##\s+1[4-9]\./.test(line) || /^##\s+7\./.test(line))) {
+        break;
+      }
+    } else if (activeModule === "prompts") {
+      if (lower.includes("14. implementation module c") || lower.includes("vibe coding master prompts") || lower.includes("10. ai coding notes")) {
+        capturing = true;
+      } else if (capturing && /^##\s+1[5-9]\./.test(line)) {
+        break;
+      }
+    }
+
+    if (capturing) {
+      result.push(line);
+    }
+  }
+
+  return result.length > 0 ? result.join("\n") : md;
+}
+
 export default function PRDOutput({
   markdown,
   isStreaming,
@@ -94,10 +138,12 @@ export default function PRDOutput({
   const [showTOC, setShowTOC] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [activeModule, setActiveModule] = useState<"all" | "structure" | "api" | "prompts">("all");
 
   const { user, signInWithGoogle } = useAuth();
 
-  const toc = useMemo(() => extractTOC(markdown), [markdown]);
+  const displayMarkdown = useMemo(() => getFilteredMarkdown(markdown, activeModule), [markdown, activeModule]);
+  const toc = useMemo(() => extractTOC(displayMarkdown), [displayMarkdown]);
 
   // Auto-scroll while streaming
   useEffect(() => {
@@ -120,19 +166,7 @@ export default function PRDOutput({
     // Now they should be logged in, let's save
     setIsSaving(true);
     try {
-      let title = "PRD Document";
-      if (projectBrief) {
-        title = projectBrief.trim().replace(/^(saya\s+ingin\s+membuat|buatkan\s+saya|buat\s+prd\s+untuk|aplikasi)\s+/i, "");
-        title = title.charAt(0).toUpperCase() + title.slice(1);
-        if (title.length > 50) {
-          title = title.substring(0, 47) + "...";
-        }
-      } else {
-        const titleMatch = markdown.match(/#\s+(.+)/);
-        if (titleMatch && !titleMatch[1].includes("Requirements Document")) {
-          title = titleMatch[1];
-        }
-      }
+      const title = extractPRDTitle(markdown, projectBrief);
 
       await addDoc(collection(db, "prds"), {
         uid: auth.currentUser?.uid || user?.uid, // fallback
@@ -287,6 +321,54 @@ export default function PRDOutput({
         </div>
       </motion.div>
 
+      {/* Module Selector Bar */}
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+        <button
+          onClick={() => setActiveModule("all")}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${
+            activeModule === "all"
+              ? "bg-accent text-background font-semibold shadow-sm"
+              : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
+          }`}
+        >
+          <FileText size={15} weight={activeModule === "all" ? "bold" : "regular"} />
+          <span>Dokumen PRD Utama</span>
+        </button>
+        <button
+          onClick={() => setActiveModule("structure")}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${
+            activeModule === "structure"
+              ? "bg-accent text-background font-semibold shadow-sm"
+              : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
+          }`}
+        >
+          <FolderSimple size={15} weight={activeModule === "structure" ? "bold" : "regular"} />
+          <span>Modul A: Folder Structure</span>
+        </button>
+        <button
+          onClick={() => setActiveModule("api")}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${
+            activeModule === "api"
+              ? "bg-accent text-background font-semibold shadow-sm"
+              : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
+          }`}
+        >
+          <Plugs size={15} weight={activeModule === "api" ? "bold" : "regular"} />
+          <span>Modul B: API & Data Specs</span>
+        </button>
+        <button
+          onClick={() => setActiveModule("prompts")}
+          className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-2 cursor-pointer ${
+            activeModule === "prompts"
+              ? "bg-accent text-background font-semibold shadow-sm"
+              : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
+          }`}
+        >
+          <TerminalWindow size={15} weight={activeModule === "prompts" ? "bold" : "regular"} />
+          <span>Modul C: Vibe Coding Prompts</span>
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-4">
         {/* PRD Content */}
         <GlassCard className="p-6 sm:p-8">
@@ -364,7 +446,7 @@ export default function PRDOutput({
                   },
                 }}
               >
-                {markdown}
+                {displayMarkdown}
               </ReactMarkdown>
             </div>
 

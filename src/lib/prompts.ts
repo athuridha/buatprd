@@ -20,13 +20,13 @@ PRIORITAS PERTANYAAN:
 1. Project Intent - masalah apa yang diselesaikan?
 2. Target User - siapa yang pakai?
 3. Core Workflow - alur utama user dari awal sampai selesai
-4. User Roles - satu tipe user atau banyak role?
-5. Core Features - fitur wajib MVP
-6. Data Model - data apa yang harus disimpan?
-7. Business Rules - ada aturan khusus?
-8. Output - apa yang ditampilkan ke user?
-9. Technical Constraints - ada batasan stack/deployment?
-10. Design Direction - UI ingin seperti apa?
+4. Framework & Tech Stack Preference - WAJIB tanyakan preferensi framework / teknologi yang ingin digunakan user untuk pembangunan project (contoh: Next.js, React + Vite, PHP / Laravel, Vue.js, Node.js, dll). Berikan opsi jawaban singkat (misal: ["Next.js (React)", "React + Vite", "PHP / Laravel", "Node.js / Express"]). Jika user sudah menyebutkannya di brief, tidak perlu ditanyakan lagi.
+5. User Roles - satu tipe user atau banyak role?
+6. Core Features - fitur wajib MVP
+7. Data Model - data apa yang harus disimpan?
+8. Business Rules - ada aturan khusus?
+9. Output - apa yang ditampilkan ke user?
+10. Technical Constraints & Design Direction - ada batasan khusus atau preferensi UI?
 
 CONTOH: Jika user bilang "aplikasi inventory gudang", kamu harus bertanya spesifik soal batch/SKU, FIFO/LIFO, low stock alert, multi-admin, laporan, lokasi rak, barcode vs manual — BUKAN pertanyaan generik.
 
@@ -55,7 +55,7 @@ export const GENERATE_PRD_SYSTEM_PROMPT = `Kamu adalah AI Product Requirement Ar
 
 PRD HARUS mengikuti struktur ini:
 
-# PRD — Project Requirements Document
+# PRD — [Nama Spesifik Project berdasarkan Brief User, contoh: PRD — System POS Cafe Simple]
 
 ## 1. Overview
 Jelaskan: project ini tentang apa, masalah yang diselesaikan, siapa pengguna utamanya, tujuan utama, nilai utama aplikasi. Bahasa objektif dan fungsional.
@@ -113,6 +113,24 @@ Instruksi untuk vibe coding: urutan pengerjaan, modul pertama, komponen utama, h
 
 ## 11. Recommended Development Order
 Urutan pengerjaan numbered list agar AI coding tools tidak bingung.
+
+## 12. Implementation Module A — Project File & Folder Structure
+WAJIB berikan spesifikasi struktur direktori/folder lengkap yang harus dibuat (dalam format markdown codeblock ascii tree), beserta daftar komponen utama, API routes, dan file konfigurasi (.env).
+
+## 13. Implementation Module B — API Route & Endpoint Specifications
+WAJIB buat tabel spesifikasi API lengkap:
+- HTTP Method (GET/POST/PUT/DELETE)
+- Endpoint Path (misal: \`/api/v1/orders\`)
+- Deskripsi & Hak Akses Role
+- Sample Request Body JSON
+- Sample Response JSON & HTTP Status Code
+
+## 14. Implementation Module C — Vibe Coding Master Prompts
+WAJIB berikan 3-4 prompt siap-copy untuk digunakan di Cursor / Windsurf / Claude:
+- **Prompt Phase 1 (Project Setup & Database Scaffold)**
+- **Prompt Phase 2 (Backend API & Business Logic)**
+- **Prompt Phase 3 (Frontend UI Component & Integration)**
+- **Prompt Phase 4 (Polish & Acceptance Testing)**
 
 ATURAN:
 - Bahasa Indonesia yang jelas, natural, teknis secukupnya
@@ -193,6 +211,7 @@ OUTPUT FORMAT (JSON valid, tanpa markdown code block):
     "mainProblem": "string",
     "mainSolution": "string",
     "platform": "string",
+    "frameworkPreference": "string (misal: Next.js, React + Vite, PHP / Laravel, dsb)",
     "userRoles": ["string"],
     "mvpFeatures": ["string"],
     "mainData": ["string"],
@@ -203,3 +222,13 @@ OUTPUT FORMAT (JSON valid, tanpa markdown code block):
 }
 
 Pastikan ringkasan mencakup semua informasi penting dan tidak ada kebutuhan yang terlewat.`;
+
+export const ENHANCE_BRIEF_SYSTEM_PROMPT = `Kamu adalah AI Product Requirement Architect. Tugasmu adalah memperjelas, memperkaya, dan menstrukturkan brief project dari user agar menjadi lebih jelas, komprehensif, dan profesional untuk pembuatan PRD.
+
+ATURAN PERBAIKAN:
+- Pertahankan ide inti dan intent asli dari user
+- Jika singkat (seperti "buat prd pos" atau "app toko online"), kembangkan menjadi deskripsi project yang utuh
+- Tambahkan konteks yang sangat relevan: tujuan aplikasi, calon target pengguna, alur kerja utama, dan gambaran fitur kunci secara alami
+- Tulis dalam 2-3 paragraf pendek yang rapi dan profesional dalam Bahasa Indonesia
+- JANGAN gunakan format markdown header raksasa (# PRD) atau section kompleks (cukup teks brief yang diperkaya)
+- Output HANYA teks brief hasil penyempurnaan saja tanpa salam, pengantar, atau penutup.`;

@@ -10,6 +10,7 @@ import BriefInput from "@/components/BriefInput";
 import QuestionsPanel from "@/components/QuestionsPanel";
 import SummaryConfirm from "@/components/SummaryConfirm";
 import PRDOutput from "@/components/PRDOutput";
+import { extractPRDTitle } from "@/lib/prd-utils";
 
 /* ---- Types ---- */
 interface AnalysisData {
@@ -32,6 +33,7 @@ interface SummaryData {
   mainProblem: string;
   mainSolution: string;
   platform: string;
+  frameworkPreference?: string;
   userRoles: string[];
   mvpFeatures: string[];
   mainData: string[];
@@ -77,15 +79,22 @@ async function streamFetch(
 }
 
 /* ---- Helpers: parse AI JSON output ---- */
+function cleanJSONParse(raw: string): any {
+  let clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    clean = clean.substring(start, end + 1);
+  }
+  return JSON.parse(clean);
+}
+
 function parseAnalysis(raw: string): {
   analysis: AnalysisData;
   questions: Question[];
 } | null {
   try {
-    // Try to extract JSON from the response (might have surrounding text)
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = cleanJSONParse(raw);
     return {
       analysis: {
         projectType: parsed.analysis?.projectType || "Tidak terdeteksi",
@@ -102,16 +111,15 @@ function parseAnalysis(raw: string): {
         })
       ),
     };
-  } catch {
+  } catch (e) {
+    console.error("parseAnalysis error:", e);
     return null;
   }
 }
 
 function parseSummary(raw: string): SummaryData | null {
   try {
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = cleanJSONParse(raw);
     const s = parsed.summary || parsed;
     return {
       projectType: s.projectType || "",
@@ -119,12 +127,14 @@ function parseSummary(raw: string): SummaryData | null {
       mainProblem: s.mainProblem || "",
       mainSolution: s.mainSolution || "",
       platform: s.platform || "Web",
+      frameworkPreference: s.frameworkPreference || "",
       userRoles: s.userRoles || ["Admin"],
       mvpFeatures: s.mvpFeatures || [],
       mainData: s.mainData || [],
       technicalNotes: s.technicalNotes || "",
     };
-  } catch {
+  } catch (e) {
+    console.error("parseSummary error:", e);
     return null;
   }
 }
@@ -136,22 +146,24 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const autoSavePRD = useCallback(async (content: string) => {
-    if (!user || !content) return;
-    try {
-      const titleMatch = content.match(/#\s+(.+)/);
-      const title = titleMatch ? titleMatch[1] : "Untitled PRD";
-      await addDoc(collection(db, "prds"), {
-        uid: user.uid,
-        title,
-        content,
-        createdAt: serverTimestamp(),
-      });
-      console.log("PRD auto-saved to cloud!");
-    } catch (err) {
-      console.error("Auto-save failed:", err);
-    }
-  }, [user]);
+  const autoSavePRD = useCallback(
+    async (content: string, briefText?: string, summaryData?: SummaryData | null) => {
+      if (!user || !content) return;
+      try {
+        const title = extractPRDTitle(content, briefText, summaryData);
+        await addDoc(collection(db, "prds"), {
+          uid: user.uid,
+          title,
+          content,
+          createdAt: serverTimestamp(),
+        });
+        console.log("PRD auto-saved to cloud with title:", title);
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+      }
+    },
+    [user]
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -225,7 +237,7 @@ export default function Home() {
         (text) => setPrdMarkdown(text)
       );
       if (user) {
-        await autoSavePRD(finalText);
+        await autoSavePRD(finalText, briefText);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal generate PRD.");
@@ -286,7 +298,7 @@ export default function Home() {
           (text) => setPrdMarkdown(text)
         );
         if (user) {
-          await autoSavePRD(finalText);
+          await autoSavePRD(finalText, brief, confirmedSummary);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Gagal generate PRD.");

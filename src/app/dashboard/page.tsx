@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import MermaidRenderer from "@/components/MermaidRenderer";
 import GlassCard from "@/components/ui/GlassCard";
 import MagneticButton from "@/components/ui/MagneticButton";
+import { extractPRDTitle } from "@/lib/prd-utils";
 
 interface PRDDocument {
   id: string;
@@ -47,10 +48,22 @@ export default function Dashboard() {
         const docsList: PRDDocument[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
+          const content = data.content || "";
+          let title = data.title || "";
+          if (
+            !title ||
+            title === "PRD — Project Requirements Document" ||
+            title === "Project Requirements Document" ||
+            title === "Assumptions" ||
+            title === "PRD Document" ||
+            title === "Untitled PRD"
+          ) {
+            title = extractPRDTitle(content);
+          }
           docsList.push({
             id: doc.id,
-            title: data.title || "Untitled PRD",
-            content: data.content || "",
+            title,
+            content,
             createdAt: data.createdAt,
           });
         });

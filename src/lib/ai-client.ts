@@ -5,13 +5,15 @@ const alibabaClient = new OpenAI({
   baseURL: process.env.ALIBABA_BASE_URL || "",
 });
 
+const DEFAULT_MODEL = process.env.ALIBABA_MODEL || "qwen3.7-max-2026-06-08";
+
 export async function streamChatCompletion(
   systemPrompt: string,
   userMessage: string,
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; model?: string }
 ) {
   const stream = await alibabaClient.chat.completions.create({
-    model: "qwen-plus",
+    model: options?.model || DEFAULT_MODEL,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
@@ -27,10 +29,10 @@ export async function streamChatCompletion(
 export async function chatCompletion(
   systemPrompt: string,
   userMessage: string,
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; model?: string }
 ) {
   const response = await alibabaClient.chat.completions.create({
-    model: "qwen-plus",
+    model: options?.model || DEFAULT_MODEL,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userMessage },
@@ -46,10 +48,10 @@ export async function chatCompletion(
 export async function streamMultiTurnCompletion(
   systemPrompt: string,
   messages: Array<{ role: "user" | "assistant"; content: string }>,
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; model?: string }
 ) {
   const stream = await alibabaClient.chat.completions.create({
-    model: "qwen-plus",
+    model: options?.model || DEFAULT_MODEL,
     messages: [
       { role: "system", content: systemPrompt },
       ...messages,

@@ -9,6 +9,7 @@ interface SummaryData {
   mainProblem: string;
   mainSolution: string;
   platform: string;
+  frameworkPreference?: string;
   userRoles: string[];
   mvpFeatures: string[];
   mainData: string[];
@@ -44,6 +45,7 @@ Buat PRD lengkap berdasarkan brief ini. Karena beberapa detail belum dijelaskan,
 - Masalah Utama: ${summary.mainProblem}
 - Solusi Utama: ${summary.mainSolution}
 - Platform: ${summary.platform}
+- Framework / Tech Stack Pilihan User: ${summary.frameworkPreference || "Sesuai rekomendasi terbaik"}
 - User Role: ${summary.userRoles.join(", ")}
 - Fitur MVP: ${summary.mvpFeatures.join(", ")}
 - Data Utama: ${summary.mainData.join(", ")}
