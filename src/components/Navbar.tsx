@@ -15,12 +15,15 @@ import {
   X,
   User,
   CaretDown,
+  Crown,
 } from "@phosphor-icons/react";
 import MagneticButton from "./ui/MagneticButton";
+import { isOwnerUser } from "@/lib/quota";
 
 export default function Navbar() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const pathname = usePathname();
+  const isOwner = isOwnerUser(user);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -65,6 +68,16 @@ export default function Navbar() {
             href: "/dashboard",
             label: "Riwayat PRD",
             icon: ClockCounterClockwise,
+          },
+        ]
+      : []),
+    ...(isOwner
+      ? [
+          {
+            href: "/admin",
+            label: "Owner Analytics",
+            icon: Crown,
+            isOwnerBadge: true,
           },
         ]
       : []),
@@ -171,6 +184,17 @@ export default function Navbar() {
                         </div>
 
                         {/* Dropdown Options */}
+                        {isOwner && (
+                          <Link
+                            href="/admin"
+                            onClick={() => setIsProfileOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 font-bold transition-colors cursor-pointer"
+                          >
+                            <Crown size={16} weight="fill" />
+                            <span>Owner Analytics</span>
+                          </Link>
+                        )}
+
                         <Link
                           href="/dashboard"
                           onClick={() => setIsProfileOpen(false)}

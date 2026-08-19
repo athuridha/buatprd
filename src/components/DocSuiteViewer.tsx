@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,37 +17,187 @@ import {
   List,
   Sidebar,
   CheckCircle,
+  Stop,
+  XCircle,
+  Play,
 } from "@phosphor-icons/react";
 import { DOC_SUITE_FILES, DocFileInfo } from "@/lib/doc-suite-prompts";
-import GlassCard from "./ui/GlassCard";
 import MagneticButton from "./ui/MagneticButton";
+import ModelSelector from "./ModelSelector";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 interface DocSuiteViewerProps {
+  prdId?: string;
   prdContent: string;
   projectBrief?: string;
   prdTitle?: string;
   selectedModel?: string;
+  initialDocs?: Record<string, string>;
+  onDocsUpdate?: (updatedDocs: Record<string, string>) => void;
 }
 
 export default function DocSuiteViewer({
+  prdId,
   prdContent,
   projectBrief,
   prdTitle = "Project Documentation",
-  selectedModel = "qwen3.7-max",
+  selectedModel: propSelectedModel,
+  initialDocs,
+  onDocsUpdate,
 }: DocSuiteViewerProps) {
+  const [suiteModel, setSuiteModel] = useState<string>(
+    propSelectedModel || "deepseek-v4-flash"
+  );
+
   const [docsMap, setDocsMap] = useState<Record<string, string>>({});
   const [generatingFiles, setGeneratingFiles] = useState<Record<string, boolean>>({});
   const [selectedFilename, setSelectedFilename] = useState<string>("SUMMARY.md");
   const [copied, setCopied] = useState(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isLoadingFromCloud, setIsLoadingFromCloud] = useState(false);
 
-  // Generate single file if missing
+  // References for abort controllers & generation lifecycle
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const isStoppedRef = useRef(false);
+  const docsMapRef = useRef<Record<string, string>>({});
+
+  // Stable cache key
+  const cacheKey = `doc_suite_${prdId || encodeURIComponent(prdTitle).slice(0, 30)}`;
+
+  // Sync ref with state
+  useEffect(() => {
+    docsMapRef.current = docsMap;
+  }, [docsMap]);
+
+  // Load existing docs from initialDocs, localStorage, and Firestore on mount / prdId change
+  useEffect(() => {
+    let isMounted = true;
+    let localFound = false;
+
+    // 1. Initial props if provided
+    if (initialDocs && Object.keys(initialDocs).length > 0) {
+      setDocsMap(initialDocs);
+      docsMapRef.current = initialDocs;
+      localFound = true;
+    }
+
+    // 2. Load from localStorage
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem(cacheKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+            setDocsMap((prev) => {
+              const merged = { ...parsed, ...prev };
+              docsMapRef.current = merged;
+              return merged;
+            });
+            localFound = true;
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Fetch from Firestore if prdId exists
+    if (prdId) {
+      setIsLoadingFromCloud(!localFound);
+      getDoc(doc(db, "prds", prdId))
+        .then((snap) => {
+          if (isMounted && snap.exists()) {
+            const data = snap.data();
+            if (data.docSuiteMap && typeof data.docSuiteMap === "object") {
+              setDocsMap((prev) => {
+                const merged = { ...data.docSuiteMap, ...prev };
+                docsMapRef.current = merged;
+                try {
+                  localStorage.setItem(cacheKey, JSON.stringify(merged));
+                } catch {}
+                if (onDocsUpdate) onDocsUpdate(merged);
+                return merged;
+              });
+            }
+          }
+        })
+        .catch((err) => console.error("Error fetching docSuiteMap:", err))
+        .finally(() => {
+          if (isMounted) setIsLoadingFromCloud(false);
+        });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [prdId, cacheKey]);
+
+  // Persist updated docs to cache and cloud
+  const saveDocsToCacheAndCloud = useCallback(
+    async (updatedDocs: Record<string, string>) => {
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(updatedDocs));
+        } catch {}
+      }
+      if (prdId) {
+        try {
+          await updateDoc(doc(db, "prds", prdId), { docSuiteMap: updatedDocs });
+        } catch (err) {
+          console.error("Failed to save docSuiteMap to Firestore:", err);
+        }
+      }
+      if (onDocsUpdate) {
+        onDocsUpdate(updatedDocs);
+      }
+    },
+    [cacheKey, prdId, onDocsUpdate]
+  );
+
+  // Stop single file generation
+  const stopSingleFile = useCallback((filename: string) => {
+    const controller = abortControllersRef.current.get(filename);
+    if (controller) {
+      controller.abort();
+      abortControllersRef.current.delete(filename);
+    }
+    setGeneratingFiles((prev) => ({ ...prev, [filename]: false }));
+  }, []);
+
+  // Stop ALL generation tasks immediately
+  const handleStopAll = useCallback(() => {
+    isStoppedRef.current = true;
+    setIsGeneratingAll(false);
+
+    // Abort all active streams
+    abortControllersRef.current.forEach((controller) => {
+      try {
+        controller.abort();
+      } catch {}
+    });
+    abortControllersRef.current.clear();
+
+    // Reset generating states
+    setGeneratingFiles({});
+  }, []);
+
+  // Generate single file (with optional force regenerate & signal cancellation)
   const generateSingleFile = useCallback(
-    async (filename: string) => {
-      if (generatingFiles[filename] || docsMap[filename]) return;
+    async (filename: string, force: boolean = false): Promise<boolean> => {
+      // Check if already generating or has content
+      if (generatingFiles[filename] || (!force && docsMapRef.current[filename] && docsMapRef.current[filename].trim().length > 50)) {
+        return false;
+      }
 
+      // If user requested stop, skip
+      if (isStoppedRef.current) return false;
+
+      // Abort any existing stream for this file
+      stopSingleFile(filename);
+
+      const controller = new AbortController();
+      abortControllersRef.current.set(filename, controller);
       setGeneratingFiles((prev) => ({ ...prev, [filename]: true }));
+
       let accumulatedText = "";
 
       try {
@@ -58,53 +208,93 @@ export default function DocSuiteViewer({
             prdContent,
             projectBrief,
             targetFile: filename,
-            model: selectedModel,
+            model: suiteModel,
           }),
+          signal: controller.signal,
         });
 
-        if (!res.ok) throw new Error(`Gagal membuat ${filename}`);
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
+        }
 
         const reader = res.body?.getReader();
-        if (!reader) return;
+        if (!reader) return false;
 
         const decoder = new TextDecoder();
         while (true) {
+          if (controller.signal.aborted || isStoppedRef.current) {
+            reader.cancel();
+            break;
+          }
+
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
           accumulatedText += chunk;
-          setDocsMap((prev) => ({ ...prev, [filename]: accumulatedText }));
+          setDocsMap((prev) => {
+            const next = { ...prev, [filename]: accumulatedText };
+            docsMapRef.current = next;
+            return next;
+          });
         }
-      } catch (err) {
-        console.error(`Error generating ${filename}:`, err);
+
+        if (accumulatedText.trim().length > 50) {
+          const finalMap = { ...docsMapRef.current, [filename]: accumulatedText };
+          saveDocsToCacheAndCloud(finalMap);
+        }
+
+        return true;
+      } catch (err: any) {
+        if (err.name === "AbortError" || controller.signal.aborted) {
+          console.log(`Generation for ${filename} was stopped by user.`);
+        } else {
+          console.error(`Error generating ${filename}:`, err);
+        }
+        return false;
       } finally {
+        abortControllersRef.current.delete(filename);
         setGeneratingFiles((prev) => ({ ...prev, [filename]: false }));
       }
     },
-    [prdContent, projectBrief, selectedModel, generatingFiles, docsMap]
+    [prdContent, projectBrief, suiteModel, generatingFiles, stopSingleFile, saveDocsToCacheAndCloud]
   );
 
-  // Batch generate all 16 files in parallel chunks for maximum speed
-  const generateAllFiles = useCallback(async () => {
-    setIsGeneratingAll(true);
-    const filesToGenerate = DOC_SUITE_FILES.filter((f) => !docsMap[f.filename]);
+  // Batch generate missing or all 16 files in parallel chunks ONLY when user clicks
+  const generateAllFiles = useCallback(
+    async (forceAll: boolean = false) => {
+      if (isGeneratingAll) return;
+      isStoppedRef.current = false;
+      setIsGeneratingAll(true);
 
-    // Process 4 files concurrently in parallel batches
-    const CONCURRENCY = 4;
-    for (let i = 0; i < filesToGenerate.length; i += CONCURRENCY) {
-      const chunk = filesToGenerate.slice(i, i + CONCURRENCY);
-      await Promise.all(chunk.map((f) => generateSingleFile(f.filename)));
-    }
-    setIsGeneratingAll(false);
-  }, [docsMap, generateSingleFile]);
+      const filesToGenerate = forceAll
+        ? DOC_SUITE_FILES
+        : DOC_SUITE_FILES.filter((f) => !docsMapRef.current[f.filename] || docsMapRef.current[f.filename].trim().length < 50);
 
-  // Initial trigger for SUMMARY.md and consecutive files
+      if (filesToGenerate.length === 0) {
+        setIsGeneratingAll(false);
+        return;
+      }
+
+      // Controlled concurrency (2 parallel streams at a time)
+      const CONCURRENCY = 2;
+      for (let i = 0; i < filesToGenerate.length; i += CONCURRENCY) {
+        if (isStoppedRef.current) break;
+        const chunk = filesToGenerate.slice(i, i + CONCURRENCY);
+        await Promise.all(chunk.map((f) => generateSingleFile(f.filename, forceAll)));
+      }
+
+      setIsGeneratingAll(false);
+    },
+    [isGeneratingAll, generateSingleFile]
+  );
+
+  // Clean up all controllers on unmount
   useEffect(() => {
-    if (Object.keys(docsMap).length === 0 && !isGeneratingAll) {
-      generateAllFiles();
-    }
-  }, [docsMap, isGeneratingAll, generateAllFiles]);
+    return () => {
+      handleStopAll();
+    };
+  }, [handleStopAll]);
 
   const handleCopyCurrentDoc = () => {
     const currentText = docsMap[selectedFilename] || "";
@@ -132,6 +322,7 @@ export default function DocSuiteViewer({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const completedCount = Object.keys(docsMap).filter(
@@ -140,14 +331,16 @@ export default function DocSuiteViewer({
 
   const currentContent = docsMap[selectedFilename] || "";
   const isCurrentGenerating = !!generatingFiles[selectedFilename];
+  const isAnyGenerating = isGeneratingAll || Object.values(generatingFiles).some(Boolean);
+  const currentHasContent = currentContent && currentContent.trim().length > 50;
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-4">
       {/* Header Suite Banner */}
-      <GlassCard className="p-4 sm:p-6 bg-gradient-to-r from-amber-500/10 via-surface-1 to-surface-1 border-amber-500/30">
+      <div className="relative z-40 rounded-3xl bg-surface-1/95 border border-amber-500/30 p-4 sm:p-6 backdrop-blur-xl shadow-xl overflow-visible">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-xs">
+            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-xs flex-shrink-0">
               <Crown size={28} weight="fill" />
             </div>
             <div>
@@ -156,16 +349,57 @@ export default function DocSuiteViewer({
                   AI Project Documentation Suite
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-bold">
-                  UNLOCKED
+                  DATABASE SYNCED
                 </span>
               </div>
               <p className="text-xs text-muted leading-relaxed mt-0.5">
-                Paket 16 Dokumen Teknikal & Engineering Siap Pakai untuk AI Coding Assistant.
+                Paket 16 Dokumen Teknikal & Engineering tersimpan permanen di cloud database Anda.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto relative z-50">
+            {/* Model Selector Dropdown */}
+            <ModelSelector dropUp={false} value={suiteModel} onChange={setSuiteModel} />
+
+            {/* Stop All / Generate Buttons */}
+            {isAnyGenerating ? (
+              <MagneticButton
+                variant="secondary"
+                size="sm"
+                onClick={handleStopAll}
+                className="text-xs gap-1.5 bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30 shadow-sm"
+                title="Hentikan semua proses generate dokumen"
+              >
+                <Stop size={15} weight="fill" className="text-red-400 animate-pulse" />
+                <span className="font-bold">Hentikan Semua</span>
+              </MagneticButton>
+            ) : completedCount < 16 ? (
+              <MagneticButton
+                variant="primary"
+                size="sm"
+                onClick={() => generateAllFiles(false)}
+                disabled={isGeneratingAll}
+                className="text-xs gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-zinc-950 font-bold border-none shadow-md"
+                title="Generate semua dokumen yang belum selesai"
+              >
+                <Play size={14} weight="fill" />
+                <span>{completedCount === 0 ? "Mulai Generate Semua (16 File)" : `Lanjutkan Generate (${completedCount}/16)`}</span>
+              </MagneticButton>
+            ) : (
+              <MagneticButton
+                variant="secondary"
+                size="sm"
+                onClick={() => generateAllFiles(true)}
+                disabled={isGeneratingAll}
+                className="text-xs gap-1.5"
+                title="Generate ulang seluruh 16 dokumen dengan model aktif"
+              >
+                <Sparkle size={15} weight="fill" className="text-amber-400" />
+                <span>Generate Ulang Semua</span>
+              </MagneticButton>
+            )}
+
             <MagneticButton
               variant="secondary"
               size="sm"
@@ -196,8 +430,18 @@ export default function DocSuiteViewer({
             <span className="font-mono font-bold text-foreground">
               {completedCount} / 16
             </span>
-            <span>Dokumen Selesai Digenerate</span>
-            {isGeneratingAll && <Spinner size={14} className="text-accent animate-spin" />}
+            <span>Dokumen Tersimpan di Database</span>
+            {isLoadingFromCloud && (
+              <span className="text-[11px] text-accent flex items-center gap-1">
+                <Spinner size={12} className="animate-spin" /> Memuat dari cloud...
+              </span>
+            )}
+            {isAnyGenerating && (
+              <div className="flex items-center gap-1.5 text-accent">
+                <Spinner size={14} className="animate-spin" />
+                <span className="text-[11px] font-medium">Sedang memproses...</span>
+              </div>
+            )}
           </div>
 
           <div className="w-48 h-2 rounded-full bg-surface-2 overflow-hidden border border-border/40 hidden sm:block">
@@ -207,10 +451,10 @@ export default function DocSuiteViewer({
             />
           </div>
         </div>
-      </GlassCard>
+      </div>
 
       {/* Main Suite Workspace Layout */}
-      <div className="flex flex-col md:flex-row gap-4 h-[75vh] min-h-[600px] overflow-hidden">
+      <div className="flex flex-col md:flex-row gap-4 h-[75vh] min-h-[600px] overflow-hidden relative z-10">
         {/* Left Sidebar Navigator (16 Markdown Files) */}
         <div className="w-full md:w-80 bg-surface-1 border border-border/60 rounded-3xl p-3 flex flex-col flex-shrink-0 overflow-hidden">
           <div className="px-3 py-2 border-b border-border/40 flex items-center justify-between">
@@ -233,9 +477,6 @@ export default function DocSuiteViewer({
                   key={f.filename}
                   onClick={() => {
                     setSelectedFilename(f.filename);
-                    if (!hasContent && !isGenerating) {
-                      generateSingleFile(f.filename);
-                    }
                   }}
                   className={`w-full text-left p-2.5 rounded-2xl text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
                     isSelected
@@ -257,7 +498,7 @@ export default function DocSuiteViewer({
                     ) : hasContent ? (
                       <CheckCircle size={15} weight="fill" className="text-emerald-400" />
                     ) : (
-                      <span className="text-[9px] text-muted-foreground/60">Antrean</span>
+                      <span className="text-[9px] text-muted-foreground/60">Belum Ada</span>
                     )}
                   </div>
                 </button>
@@ -277,15 +518,36 @@ export default function DocSuiteViewer({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => generateSingleFile(selectedFilename)}
-                disabled={isCurrentGenerating}
-                className="px-3 py-1 rounded-xl bg-surface-2 hover:bg-surface-3 text-xs text-muted hover:text-foreground border border-border/60 transition-all flex items-center gap-1.5 cursor-pointer"
-                title="Generate ulang file ini"
-              >
-                <ArrowCounterClockwise size={14} className={isCurrentGenerating ? "animate-spin" : ""} />
-                <span>Generate Ulang</span>
-              </button>
+              {isCurrentGenerating ? (
+                <button
+                  onClick={() => stopSingleFile(selectedFilename)}
+                  className="px-3 py-1 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-xs text-red-400 border border-red-500/40 transition-all flex items-center gap-1.5 cursor-pointer font-bold"
+                  title="Hentikan pembuatan file ini"
+                >
+                  <Stop size={14} weight="fill" className="text-red-400 animate-pulse" />
+                  <span>Hentikan File Ini</span>
+                </button>
+              ) : currentHasContent ? (
+                <button
+                  onClick={() => generateSingleFile(selectedFilename, true)}
+                  disabled={isCurrentGenerating}
+                  className="px-3 py-1 rounded-xl bg-surface-2 hover:bg-surface-3 text-xs text-muted hover:text-foreground border border-border/60 transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Generate ulang file ini dengan model aktif"
+                >
+                  <ArrowCounterClockwise size={14} />
+                  <span>Generate Ulang</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => generateSingleFile(selectedFilename, false)}
+                  disabled={isCurrentGenerating}
+                  className="px-3 py-1 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Generate dokumen ini sekarang"
+                >
+                  <Play size={12} weight="fill" />
+                  <span>Generate File Ini</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -297,8 +559,16 @@ export default function DocSuiteViewer({
                 <p className="text-xs text-muted">
                   Menyusun dokumen <strong className="text-foreground">{selectedFilename}</strong> dengan AI...
                 </p>
+                <MagneticButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => stopSingleFile(selectedFilename)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Batalkan
+                </MagneticButton>
               </div>
-            ) : currentContent ? (
+            ) : currentHasContent ? (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -341,11 +611,27 @@ export default function DocSuiteViewer({
                 {currentContent}
               </ReactMarkdown>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center space-y-3 py-16">
-                <FileText size={36} className="text-muted-foreground/40" />
-                <p className="text-xs text-muted">
-                  Klik file di sidebar kiri untuk meng-generate dokumen.
-                </p>
+              <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-16">
+                <div className="p-4 rounded-3xl bg-surface-2 border border-border/60 text-muted-foreground/60">
+                  <FileText size={40} />
+                </div>
+                <div className="max-w-sm space-y-1">
+                  <h4 className="font-bold text-sm text-foreground">
+                    Dokumen {selectedFilename} Belum Digenerate
+                  </h4>
+                  <p className="text-xs text-muted leading-relaxed">
+                    Klik tombol di bawah untuk membuat dokumen ini dengan model <strong className="text-foreground">{suiteModel}</strong>, atau gunakan tombol di atas untuk generate semua sekaligus.
+                  </p>
+                </div>
+                <MagneticButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() => generateSingleFile(selectedFilename, false)}
+                  className="text-xs gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold"
+                >
+                  <Play size={13} weight="fill" />
+                  <span>Generate Dokumen Ini</span>
+                </MagneticButton>
               </div>
             )}
           </div>

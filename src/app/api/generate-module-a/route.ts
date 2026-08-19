@@ -5,29 +5,27 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const { brief, summary, model } = await request.json();
+    const { brief, summary, prdContent, model } = await request.json();
 
-    if (!brief) {
-      return Response.json({ error: "Brief diperlukan." }, { status: 400 });
+    if (!brief && !prdContent) {
+      return Response.json({ error: "Brief atau PRD diperlukan." }, { status: 400 });
     }
 
-    const userMessage = `Berikut informasi project dari user:
-
-Brief User:
-"${brief}"
-
-${
-  summary
-    ? `Ringkasan Project:
+    let userMessage = `Berikut informasi project dari user:\n\n`;
+    if (brief) userMessage += `Brief User:\n"${brief}"\n\n`;
+    if (summary) {
+      userMessage += `Ringkasan Project:
 - Jenis Project: ${summary.projectType}
 - Target User: ${summary.targetUser}
 - Platform: ${summary.platform}
 - Framework/Stack Pilihan: ${summary.frameworkPreference || "Terbaik"}
-- Fitur MVP: ${summary.mvpFeatures?.join(", ")}`
-    : ""
-}
+- Fitur MVP: ${summary.mvpFeatures?.join(", ")}\n\n`;
+    }
+    if (prdContent) {
+      userMessage += `PRD Context:\n${prdContent.slice(0, 3000)}\n\n`;
+    }
 
-Buatlah Modul A: Project File & Folder Structure secara sangat terperinci dan realistis dalam format ASCII tree lengkap.`;
+    userMessage += `Buatlah Modul A: Project File & Folder Structure secara sangat terperinci dan realistis dalam format ASCII tree lengkap.`;
 
     const stream = await streamChatCompletion(
       GENERATE_MODULE_A_SYSTEM_PROMPT,

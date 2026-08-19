@@ -5,35 +5,35 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const { brief, summary, model } = await request.json();
+    const { brief, summary, prdContent, model } = await request.json();
 
-    if (!brief) {
-      return Response.json({ error: "Brief diperlukan." }, { status: 400 });
+    if (!brief && !prdContent) {
+      return Response.json({ error: "Brief atau konten PRD diperlukan." }, { status: 400 });
     }
 
-    const userMessage = `Berikut informasi project dari user:
-
-Brief User:
-"${brief}"
-
-${
-  summary
-    ? `Ringkasan Project:
+    let userMessage = `Berikut informasi lengkap project untuk penyusunan INSTRUCTIONS.md (Panduan Eksekusi & Runbook Implementasi Proyek):\n\n`;
+    if (brief) {
+      userMessage += `### Brief Awal User:\n"${brief}"\n\n`;
+    }
+    if (summary) {
+      userMessage += `### Ringkasan Konfirmasi Project:
 - Jenis Project: ${summary.projectType}
 - Target User: ${summary.targetUser}
 - Masalah Utama: ${summary.mainProblem}
 - Solusi Utama: ${summary.mainSolution}
 - Framework/Stack Pilihan: ${summary.frameworkPreference || "Terbaik"}
-- Catatan Teknis: ${summary.technicalNotes}`
-    : ""
-}
+- Catatan Teknis: ${summary.technicalNotes}\n\n`;
+    }
+    if (prdContent) {
+      userMessage += `### Dokumen PRD Lengkap:\n\`\`\`markdown\n${prdContent}\n\`\`\`\n\n`;
+    }
 
-Buatlah dokumen INSTRUCTIONS.md (panduan agen AI coding) secara sangat spesifik dan detail untuk project ini.`;
+    userMessage += `Berdasarkan seluruh informasi arsitektur dan spesifikasi PRD di atas, susunlah dokumen **INSTRUCTIONS.md** (panduan langkah-demi-langkah implementasi proyek untuk developer dan tim) secara sangat terstruktur, jelas, dan siap pakai.`;
 
     const stream = await streamChatCompletion(
       GENERATE_INSTRUCTION_SYSTEM_PROMPT,
       userMessage,
-      { temperature: 0.6, maxTokens: 4096, model }
+      { temperature: 0.6, maxTokens: 8192, model }
     );
 
     const encoder = new TextEncoder();

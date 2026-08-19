@@ -1,5 +1,5 @@
 import { streamChatCompletion } from "@/lib/ai-client";
-import { GENERATE_MODULE_C_SYSTEM_PROMPT } from "@/lib/prompts";
+import { GENERATE_AGENTS_MD_SYSTEM_PROMPT } from "@/lib/prompts";
 
 export const dynamic = "force-dynamic";
 
@@ -8,28 +8,32 @@ export async function POST(request: Request) {
     const { brief, summary, prdContent, model } = await request.json();
 
     if (!brief && !prdContent) {
-      return Response.json({ error: "Brief atau PRD diperlukan." }, { status: 400 });
+      return Response.json({ error: "Brief atau konten PRD diperlukan." }, { status: 400 });
     }
 
-    let userMessage = `Berikut informasi project dari user:\n\n`;
-    if (brief) userMessage += `Brief User:\n"${brief}"\n\n`;
+    let userMessage = `Berikut informasi arsitektur dan spesifikasi lengkap project untuk penyusunan AGENTS.md:\n\n`;
+    if (brief) {
+      userMessage += `### Brief Project Awal:\n"${brief}"\n\n`;
+    }
     if (summary) {
-      userMessage += `Ringkasan Project:
+      userMessage += `### Ringkasan Konfirmasi Project:
 - Jenis Project: ${summary.projectType}
 - Target User: ${summary.targetUser}
+- Masalah Utama: ${summary.mainProblem}
+- Solusi Utama: ${summary.mainSolution}
 - Framework/Stack Pilihan: ${summary.frameworkPreference || "Terbaik"}
-- Fitur MVP: ${summary.mvpFeatures?.join(", ")}\n\n`;
+- Catatan Teknis: ${summary.technicalNotes}\n\n`;
     }
     if (prdContent) {
-      userMessage += `PRD Context:\n${prdContent.slice(0, 3000)}\n\n`;
+      userMessage += `### Dokumen PRD Lengkap (Single Source of Truth):\n\`\`\`markdown\n${prdContent}\n\`\`\`\n\n`;
     }
 
-    userMessage += `Buatlah Modul C: Vibe Coding Master Prompts dengan 4 master prompt terpisah (Prompt 1 Setup, Prompt 2 Backend, Prompt 3 Frontend UI, Prompt 4 Polish & Test).`;
+    userMessage += `Berdasarkan seluruh informasi dan dokumen PRD di atas, susunlah dokumen **AGENTS.md** (master rules & inquiry protocol untuk AI Coding Agent) secara sangat presisi, disiplin, dan aplikatif.`;
 
     const stream = await streamChatCompletion(
-      GENERATE_MODULE_C_SYSTEM_PROMPT,
+      GENERATE_AGENTS_MD_SYSTEM_PROMPT,
       userMessage,
-      { temperature: 0.6, maxTokens: 4096, model }
+      { temperature: 0.6, maxTokens: 8192, model }
     );
 
     const encoder = new TextEncoder();
@@ -56,9 +60,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Generate Module C API error:", error);
+    console.error("Generate AGENTS.md API error:", error);
     return Response.json(
-      { error: "Gagal generate Modul C. Coba lagi." },
+      { error: "Gagal generate AGENTS.md. Coba lagi." },
       { status: 500 }
     );
   }

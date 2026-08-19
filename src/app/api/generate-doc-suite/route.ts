@@ -32,9 +32,9 @@ export async function POST(request: Request) {
     const userMsg = `Tolong buatkan dokumen ${targetFile} secara sangat detail, profesional, lengkap, dan berstruktur rapi sesuai instruksi di atas.`;
 
     const stream = await streamChatCompletion(systemPrompt, userMsg, {
-      temperature: 0.7,
+      temperature: 0.4,
       maxTokens: 8192,
-      model: model || "qwen3.7-max",
+      model: model || "deepseek-v4-flash",
     });
 
     const encoder = new TextEncoder();

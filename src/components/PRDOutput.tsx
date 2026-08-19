@@ -14,28 +14,21 @@ import {
   Check,
   List,
   CloudArrowUp,
-  FolderSimple,
-  Plugs,
   TerminalWindow,
   FileText,
   Sparkle,
   Code,
-  ArrowRight,
   Archive,
   ChatCircleText,
-  Crown,
 } from "@phosphor-icons/react";
 import MagneticButton from "./ui/MagneticButton";
 import GlassCard from "./ui/GlassCard";
 import MermaidRenderer from "./MermaidRenderer";
 import PRDChatbot from "./PRDChatbot";
-import PaymentModal from "./PaymentModal";
-import DocSuiteViewer from "./DocSuiteViewer";
 import { useAuth } from "@/context/AuthContext";
 import { db, auth } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { extractPRDTitle } from "@/lib/prd-utils";
-import { isOwnerUser } from "@/lib/quota";
 
 interface PRDOutputProps {
   markdown: string;
@@ -43,9 +36,10 @@ interface PRDOutputProps {
   onStartOver: () => void;
   projectBrief?: string;
   summary?: any;
+  selectedModel?: string;
 }
 
-type TabType = "prd" | "instruction" | "module_a" | "module_b" | "module_c" | "suite";
+type TabType = "prd" | "instruction" | "agents";
 
 /* Check if a mermaid code block is complete */
 function isCompleteMermaidBlock(md: string, blockContent: string): boolean {
@@ -97,7 +91,7 @@ const CodeBlock = memo(function CodeBlock({ children }: { children: React.ReactN
   return (
     <div className="relative group my-4 rounded-xl overflow-hidden bg-surface-1 border border-border">
       <div className="flex items-center justify-between px-3 py-1.5 bg-surface-2/80 border-b border-border/50 text-[11px] text-muted-foreground font-mono">
-        <span>Code Block / Prompt</span>
+        <span>Code Block / Specification</span>
         <button
           onClick={handleCopyCode}
           className="flex items-center gap-1 hover:text-accent transition-colors cursor-pointer"
@@ -140,6 +134,7 @@ export default function PRDOutput({
   onStartOver,
   projectBrief,
   summary,
+  selectedModel,
 }: PRDOutputProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -148,39 +143,22 @@ export default function PRDOutput({
   const [isCopiedMarkdown, setIsCopiedMarkdown] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("prd");
 
-  // Premium 16-Doc Suite States
-  const [isDocSuiteUnlocked, setIsDocSuiteUnlocked] = useState(false);
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [showTOC, setShowTOC] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const prdTitle = useMemo(() => extractPRDTitle(markdown), [markdown]);
+  const prdTitle = useMemo(() => extractPRDTitle(markdown, projectBrief, summary), [markdown, projectBrief, summary]);
 
-  // Check permanent unlock state from localStorage
-  useEffect(() => {
-    if (!prdTitle) return;
-    const cleanKey = `unlocked_suite_${prdTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-    const isUnlocked = localStorage.getItem(cleanKey) === "true";
-    if (isUnlocked) {
-      setIsDocSuiteUnlocked(true);
-    }
-  }, [prdTitle]);
-
-  // Module contents state
+  // Document contents state
   const [instructionMD, setInstructionMD] = useState("");
-  const [moduleAMD, setModuleAMD] = useState("");
-  const [moduleBMD, setModuleBMD] = useState("");
-  const [moduleCMD, setModuleCMD] = useState("");
+  const [agentsMD, setAgentsMD] = useState("");
 
-  // Module streaming state
+  // Document streaming state
   const [generatingTab, setGeneratingTab] = useState<TabType | null>(null);
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
 
   const { user, signInWithGoogle } = useAuth();
-  const isOwner = isOwnerUser(user);
-  const effectiveIsUnlocked = isOwner || isDocSuiteUnlocked;
 
   // Current active content
   const activeContent = useMemo(() => {
@@ -189,31 +167,27 @@ export default function PRDOutput({
         return markdown;
       case "instruction":
         return instructionMD;
-      case "module_a":
-        return moduleAMD;
-      case "module_b":
-        return moduleBMD;
-      case "module_c":
-        return moduleCMD;
+      case "agents":
+        return agentsMD;
       default:
         return markdown;
     }
-  }, [activeTab, markdown, instructionMD, moduleAMD, moduleBMD, moduleCMD]);
+  }, [activeTab, markdown, instructionMD, agentsMD]);
 
   const isCurrentStreaming = isStreaming && activeTab === "prd";
-  const isModuleGenerating = generatingTab === activeTab;
+  const isDocGenerating = generatingTab === activeTab;
 
   const toc = useMemo(() => extractTOC(activeContent), [activeContent]);
 
   // Auto-scroll while streaming
   useEffect(() => {
-    if ((isCurrentStreaming || isModuleGenerating) && scrollRef.current) {
+    if ((isCurrentStreaming || isDocGenerating) && scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
-  }, [activeContent, isCurrentStreaming, isModuleGenerating]);
+  }, [activeContent, isCurrentStreaming, isDocGenerating]);
 
-  /* Helper to stream fetch a module */
+  /* Helper to stream fetch a document */
   const fetchAndStream = async (
     endpoint: string,
     targetTab: TabType,
@@ -226,7 +200,12 @@ export default function PRDOutput({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: projectBrief, summary }),
+        body: JSON.stringify({
+          brief: projectBrief,
+          summary,
+          prdContent: markdown,
+          model: selectedModel,
+        }),
       });
 
       if (!res.ok) {
@@ -248,33 +227,35 @@ export default function PRDOutput({
       }
     } catch (err) {
       console.error(`Error generating ${targetTab}:`, err);
-      setter(`Gagal membuat konten modul ini. Silakan coba lagi.`);
+      setter(`Gagal membuat konten dokumen. Silakan coba lagi.`);
     } finally {
       setGeneratingTab(null);
     }
   };
 
-  /* Batch generator for all modules */
-  const handleGenerateAllModules = useCallback(async () => {
+  /* Batch generator for INSTRUCTIONS.md & AGENTS.md */
+  const handleGenerateAll = useCallback(async () => {
     if (isBatchGenerating || generatingTab) return;
     setIsBatchGenerating(true);
     try {
-      if (!instructionMD) await fetchAndStream("/api/generate-instruction", "instruction", setInstructionMD);
-      if (!moduleAMD) await fetchAndStream("/api/generate-module-a", "module_a", setModuleAMD);
-      if (!moduleBMD) await fetchAndStream("/api/generate-module-b", "module_b", setModuleBMD);
-      if (!moduleCMD) await fetchAndStream("/api/generate-module-c", "module_c", setModuleCMD);
+      if (!instructionMD) {
+        await fetchAndStream("/api/generate-instruction", "instruction", setInstructionMD);
+      }
+      if (!agentsMD) {
+        await fetchAndStream("/api/generate-agents", "agents", setAgentsMD);
+      }
     } finally {
       setIsBatchGenerating(false);
     }
-  }, [isBatchGenerating, generatingTab, instructionMD, moduleAMD, moduleBMD, moduleCMD, projectBrief, summary]);
+  }, [isBatchGenerating, generatingTab, instructionMD, agentsMD, projectBrief, summary, markdown, selectedModel]);
 
-  // Auto-trigger module generation in background after PRD finishes streaming
+  // Auto-trigger background generation after PRD finishes streaming
   useEffect(() => {
     if (!isStreaming && markdown && markdown.length > 50 && !autoTriggeredRef.current && projectBrief) {
       autoTriggeredRef.current = true;
-      handleGenerateAllModules();
+      handleGenerateAll();
     }
-  }, [isStreaming, markdown, projectBrief, handleGenerateAllModules]);
+  }, [isStreaming, markdown, projectBrief, handleGenerateAll]);
 
   const handleSaveToCloud = async () => {
     if (!user) {
@@ -291,12 +272,16 @@ export default function PRDOutput({
 
       await addDoc(collection(db, "prds"), {
         uid: auth.currentUser?.uid || user?.uid,
+        userEmail: user?.email || "",
+        userName: user?.displayName || "User",
+        userPhoto: user?.photoURL || "",
         title,
         content: markdown,
         instructionMD,
-        moduleAMD,
-        moduleBMD,
-        moduleCMD,
+        agentsMD,
+        instructionsContent: instructionMD,
+        agentsContent: agentsMD,
+        docSuiteMap: {},
         createdAt: serverTimestamp(),
       });
       setSaveSuccess(true);
@@ -329,17 +314,11 @@ export default function PRDOutput({
   const getDownloadFileName = (): string => {
     switch (activeTab) {
       case "prd":
-        return "prd_document.md";
+        return "01_PRD_DOCUMENT.md";
       case "instruction":
         return "INSTRUCTIONS.md";
-      case "module_a":
-        return "MODUL_A_FOLDER_STRUCTURE.md";
-      case "module_b":
-        return "MODUL_B_API_SPECS.md";
-      case "module_c":
-        return "MODUL_C_VIBE_PROMPTS.md";
-      case "suite":
-        return "DOCUMENTATION_SUITE.md";
+      case "agents":
+        return "AGENTS.md";
       default:
         return "PRD_DOCUMENT.md";
     }
@@ -359,11 +338,13 @@ export default function PRDOutput({
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
-    documentTitle: getDownloadFileName().replace(".md", ""),
+    documentTitle: `${prdTitle} - PRD Document`,
     pageStyle: `
       @page { size: auto; margin: 20mm; }
       @media print {
-        body { -webkit-print-color-adjust: exact; }
+        body { background: white !important; color: black !important; }
+        .prose-prd { max-height: none !important; overflow: visible !important; }
+        pre, code { white-space: pre-wrap !important; word-break: break-word !important; }
       }
     `,
   });
@@ -376,28 +357,25 @@ export default function PRDOutput({
       zip.file("01_PRD_DOCUMENT.md", markdown);
     }
     if (instructionMD) {
-      zip.file("AGENTS.md", instructionMD);
       zip.file("INSTRUCTIONS.md", instructionMD);
     }
-    if (moduleAMD) {
-      zip.file("MODUL_A_FOLDER_STRUCTURE.md", moduleAMD);
-    }
-    if (moduleBMD) {
-      zip.file("MODUL_B_API_SPECS.md", moduleBMD);
-    }
-    if (moduleCMD) {
-      zip.file("MODUL_C_VIBE_PROMPTS.md", moduleCMD);
+    if (agentsMD) {
+      zip.file("AGENTS.md", agentsMD);
+      zip.file(".cursorrules", agentsMD);
+      zip.file("CLAUDE.md", agentsMD);
+    } else if (instructionMD) {
+      zip.file("AGENTS.md", instructionMD);
+      zip.file(".cursorrules", instructionMD);
+      zip.file("CLAUDE.md", instructionMD);
     }
 
-    const readme = `# ${title} — Vibe Coding Suite Package
+    const readme = `# ${title} — Vibe Coding & Agent Architecture Package
 
-File-file berikut telah disiapkan oleh BuatPRD untuk siap dipakai pada AI Coding Tools (Cursor / Windsurf / Antigravity):
+File-file berikut telah disiapkan oleh BuatPRD untuk siap dipakai oleh Developer & AI Coding Agents (Cursor / Windsurf / Claude Code / Antigravity):
 
-- **AGENTS.md / INSTRUCTIONS.md**: Salin ke root folder proyek sebagai aturan & panduan AI Coding Agent.
-- **01_PRD_DOCUMENT.md**: Dokumen PRD utama.
-- **MODUL_A_FOLDER_STRUCTURE.md**: Spesifikasi arsitektur folder ASCII tree & setup .env.
-- **MODUL_B_API_SPECS.md**: Spesifikasi endpoint API, HTTP Method, Role, & JSON payload.
-- **MODUL_C_VIBE_PROMPTS.md**: Master Prompt 1 s/d 4 untuk vibe coding.
+1. **01_PRD_DOCUMENT.md**: Dokumen PRD utama lengkap (Overview, Flow, DB Schema, dan Features).
+2. **INSTRUCTIONS.md**: Panduan eksekusi proyek langkah-demi-langkah bagi Developer/Tim.
+3. **AGENTS.md / .cursorrules / CLAUDE.md**: Master rulebook operasional AI Agent (Inquiry-First Protocol & Modular Coding Guidelines).
 
 Generated with BuatPRD — AI-Assisted PRD Architect.
 `;
@@ -412,7 +390,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [markdown, instructionMD, moduleAMD, moduleBMD, moduleCMD, projectBrief, summary]);
+  }, [markdown, instructionMD, agentsMD, projectBrief, summary]);
 
   return (
     <motion.div
@@ -445,12 +423,12 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
               <List size={18} weight="bold" />
             </button>
             <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground">
-              PRD Architect Output
+              PRD & Agent Architect
             </h2>
-            {(isCurrentStreaming || isModuleGenerating || isBatchGenerating) && (
+            {(isCurrentStreaming || isDocGenerating || isBatchGenerating) && (
               <div className="flex items-center gap-1.5 text-xs text-accent bg-accent-muted px-2 py-0.5 rounded-full border border-accent/20">
                 <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
-                <span>{isBatchGenerating ? "Generating All..." : "Generating..."}</span>
+                <span>{isBatchGenerating ? "Generating Docs..." : "Generating..."}</span>
               </div>
             )}
           </div>
@@ -471,7 +449,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
               variant="primary"
               size="sm"
               className="text-xs px-3 py-1.5 font-bold"
-              title="Tanyakan sesuatu tentang PRD ini kepada AI"
+              title="Tanyakan sesuatu tentang PRD atau arsitektur ini kepada AI"
             >
               <ChatCircleText size={16} weight="fill" />
               <span>Tanya AI PRD</span>
@@ -479,46 +457,17 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             </MagneticButton>
           </Link>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (effectiveIsUnlocked) {
-                setActiveTab("suite");
-              } else {
-                setIsPaymentModalOpen(true);
-              }
-            }}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-              effectiveIsUnlocked
-                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
-                : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 border border-amber-400/40"
-            }`}
-            title={
-              effectiveIsUnlocked
-                ? "Buka Paket 16 Dokumen Teknikal"
-                : "Buka Paket 16 Dokumentasi Teknikal Project (Rp 50.000)"
-            }
-          >
-            <Crown size={16} weight="fill" />
-            <span>
-              {isOwner
-                ? "16-Doc Suite (Owner)"
-                : effectiveIsUnlocked
-                ? "16-Doc Suite (Unlocked)"
-                : "16-Doc Suite (Rp 50k)"}
-            </span>
-          </button>
-
-          {(!instructionMD || !moduleAMD || !moduleBMD || !moduleCMD) && (
+          {(!instructionMD || !agentsMD) && (
             <MagneticButton
               variant="secondary"
               size="sm"
-              onClick={handleGenerateAllModules}
+              onClick={handleGenerateAll}
               disabled={isBatchGenerating || !!generatingTab}
               className="text-xs px-2.5 py-1.5 flex-shrink-0"
+              title="Generate INSTRUCTIONS.md dan AGENTS.md sekarang"
             >
               <Sparkle size={14} weight="fill" className={isBatchGenerating ? "animate-spin" : ""} />
-              <span>{isBatchGenerating ? "Generating..." : "Generate Semua Modul"}</span>
+              <span>{isBatchGenerating ? "Generating..." : "Generate Panduan & Rules"}</span>
             </MagneticButton>
           )}
 
@@ -526,8 +475,9 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             variant="secondary"
             size="sm"
             onClick={handleCopy}
-            disabled={isCurrentStreaming || isModuleGenerating || !activeContent}
+            disabled={isCurrentStreaming || isDocGenerating || !activeContent}
             className="text-xs px-2.5 py-1.5 flex-shrink-0"
+            title="Salin isi dokumen aktif"
           >
             {copied ? <Check size={15} weight="bold" /> : <Copy size={15} weight="bold" />}
             <span>{copied ? "Copied" : "Copy"}</span>
@@ -537,8 +487,9 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             variant="secondary"
             size="sm"
             onClick={handleDownload}
-            disabled={isCurrentStreaming || isModuleGenerating || !activeContent}
+            disabled={isCurrentStreaming || isDocGenerating || !activeContent}
             className="text-xs px-2.5 py-1.5 flex-shrink-0"
+            title={`Download ${getDownloadFileName()}`}
           >
             <DownloadSimple size={15} weight="bold" />
             <span>.md</span>
@@ -550,7 +501,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             onClick={handleDownloadZip}
             disabled={isStreaming || !markdown}
             className="text-xs px-2.5 py-1.5 flex-shrink-0 font-bold"
-            title="Download Semua Modul & Document sebagai ZIP"
+            title="Download Semua Dokumen (PRD, INSTRUCTIONS, AGENTS.md, .cursorrules) dalam ZIP"
           >
             <Archive size={15} weight="bold" />
             <span>.zip (All)</span>
@@ -560,8 +511,9 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             variant="secondary"
             size="sm"
             onClick={handlePrint}
-            disabled={isCurrentStreaming || isModuleGenerating || !activeContent}
+            disabled={isCurrentStreaming || isDocGenerating || !activeContent}
             className="text-xs px-2.5 py-1.5 flex-shrink-0"
+            title="Cetak atau simpan sebagai PDF"
           >
             <DownloadSimple size={15} weight="bold" />
             <span>.pdf</span>
@@ -573,6 +525,7 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
             onClick={handleSaveToCloud}
             disabled={isStreaming || !markdown || isSaving}
             className="text-xs px-2.5 py-1.5 flex-shrink-0"
+            title="Simpan ke Cloud History"
           >
             <CloudArrowUp size={15} weight="bold" className={isSaving ? "animate-pulse" : ""} />
             <span>{isSaving ? "Saving..." : saveSuccess ? "Saved!" : "Save"}</span>
@@ -626,70 +579,71 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
         )}
       </AnimatePresence>
 
-      {/* Responsive Horizontal Module Tabs */}
+      {/* 3 Core Essential Architecture Tabs */}
       <div className="flex items-center gap-1.5 sm:gap-2 mb-4 overflow-x-auto pb-2 border-b border-border/40 scrollbar-thin">
+        {/* Tab 1: PRD Utama */}
         <button
           onClick={() => setActiveTab("prd")}
-          className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === "prd"
-              ? "bg-accent text-background font-semibold shadow-sm"
+              ? "bg-accent text-background font-bold shadow-sm"
               : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
           }`}
+          title="Dokumen Product Requirements Document (PRD) Utama"
         >
           <FileText size={16} weight={activeTab === "prd" ? "bold" : "regular"} />
           <span>PRD Utama</span>
+          {markdown && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
         </button>
 
+        {/* Tab 2: INSTRUCTIONS.md */}
         <button
-          onClick={() => setActiveTab("instruction")}
-          className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+          onClick={() => {
+            setActiveTab("instruction");
+            if (!instructionMD && !generatingTab) {
+              fetchAndStream("/api/generate-instruction", "instruction", setInstructionMD);
+            }
+          }}
+          className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
             activeTab === "instruction"
-              ? "bg-accent text-background font-semibold shadow-sm"
+              ? "bg-accent text-background font-bold shadow-sm"
               : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
           }`}
+          title="Panduan langkah-demi-langkah eksekusi proyek untuk developer dan tim"
         >
-          <Code size={16} weight={activeTab === "instruction" ? "bold" : "regular"} />
+          <List size={16} weight={activeTab === "instruction" ? "bold" : "regular"} />
           <span>INSTRUCTIONS.md</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+            activeTab === "instruction" ? "bg-background/20 text-background" : "bg-surface-3 text-muted-foreground"
+          }`}>
+            Execution
+          </span>
           {instructionMD && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
         </button>
 
+        {/* Tab 3: AGENTS.md */}
         <button
-          onClick={() => setActiveTab("module_a")}
-          className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-            activeTab === "module_a"
-              ? "bg-accent text-background font-semibold shadow-sm"
+          onClick={() => {
+            setActiveTab("agents");
+            if (!agentsMD && !generatingTab) {
+              fetchAndStream("/api/generate-agents", "agents", setAgentsMD);
+            }
+          }}
+          className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+            activeTab === "agents"
+              ? "bg-accent text-background font-bold shadow-sm"
               : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
           }`}
+          title="Master System Prompt & Aturan AI Coding Agent (Inquiry-First Protocol & Modular Awareness)"
         >
-          <FolderSimple size={16} weight={activeTab === "module_a" ? "bold" : "regular"} />
-          <span>Modul A: Folder Structure</span>
-          {moduleAMD && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
-        </button>
-
-        <button
-          onClick={() => setActiveTab("module_b")}
-          className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-            activeTab === "module_b"
-              ? "bg-accent text-background font-semibold shadow-sm"
-              : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
-          }`}
-        >
-          <Plugs size={16} weight={activeTab === "module_b" ? "bold" : "regular"} />
-          <span>Modul B: API & Data Specs</span>
-          {moduleBMD && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
-        </button>
-
-        <button
-          onClick={() => setActiveTab("module_c")}
-          className={`flex-shrink-0 px-3 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-            activeTab === "module_c"
-              ? "bg-accent text-background font-semibold shadow-sm"
-              : "bg-surface-2 text-muted hover:text-foreground border border-border/40"
-          }`}
-        >
-          <TerminalWindow size={16} weight={activeTab === "module_c" ? "bold" : "regular"} />
-          <span>Modul C: Vibe Coding Prompts</span>
-          {moduleCMD && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+          <Code size={16} weight={activeTab === "agents" ? "bold" : "regular"} />
+          <span>AGENTS.md</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+            activeTab === "agents" ? "bg-background/20 text-background" : "bg-surface-3 text-accent font-semibold"
+          }`}>
+            AI Rules
+          </span>
+          {agentsMD && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
         </button>
       </div>
 
@@ -698,202 +652,203 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
         <GlassCard className="p-4 sm:p-6 md:p-8 w-full overflow-hidden">
           <div ref={scrollRef} className="prose-prd min-h-[400px] max-h-[75dvh] overflow-y-auto pr-1 relative">
             {activeContent ? (
-              <div ref={printRef} className="pb-4">
+              <div ref={printRef}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    pre({ children }) {
-                      const child = Array.isArray(children) ? children[0] : children;
-                      if (
-                        child &&
-                        typeof child === "object" &&
-                        "props" in child &&
-                        child.props?.className?.includes("language-mermaid")
-                      ) {
-                        const codeContent = String(child.props.children).replace(/\n$/, "");
-                        return <MermaidBlock fullMarkdown={activeContent}>{codeContent}</MermaidBlock>;
-                      }
-                      return <CodeBlock>{children}</CodeBlock>;
-                    },
-                    code(props) {
-                      const { children, className, ...rest } = props;
-                      const match = /language-(\w+)/.exec(className || "");
-                      const lang = match?.[1];
-                      const codeString = String(children).replace(/\n$/, "");
-
-                      if (lang === "mermaid") {
-                        return <MermaidBlock fullMarkdown={activeContent}>{codeString}</MermaidBlock>;
-                      }
-
+                    h1: ({ children }) => {
+                      const text = String(children);
+                      const id = text.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-");
                       return (
-                        <code className={className} {...rest}>
+                        <h1 id={id} className="text-xl sm:text-2xl font-bold tracking-tight text-foreground mt-2 mb-4 pb-2 border-b border-border/40">
                           {children}
-                        </code>
+                        </h1>
                       );
                     },
-                    h1({ children }) {
+                    h2: ({ children }) => {
                       const text = String(children);
-                      const id = text
-                        .toLowerCase()
-                        .replace(/[^a-z0-9\s-]/g, "")
-                        .replace(/\s+/g, "-");
-                      return <h1 id={id}>{children}</h1>;
+                      const id = text.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-");
+                      return (
+                        <h2 id={id} className="text-lg sm:text-xl font-semibold tracking-tight text-foreground mt-6 mb-3">
+                          {children}
+                        </h2>
+                      );
                     },
-                    h2({ children }) {
+                    h3: ({ children }) => {
                       const text = String(children);
-                      const id = text
-                        .toLowerCase()
-                        .replace(/[^a-z0-9\s-]/g, "")
-                        .replace(/\s+/g, "-");
-                      return <h2 id={id}>{children}</h2>;
+                      const id = text.toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-");
+                      return (
+                        <h3 id={id} className="text-base sm:text-lg font-medium text-foreground mt-4 mb-2">
+                          {children}
+                        </h3>
+                      );
                     },
-                    h3({ children }) {
-                      const text = String(children);
-                      const id = text
-                        .toLowerCase()
-                        .replace(/[^a-z0-9\s-]/g, "")
-                        .replace(/\s+/g, "-");
-                      return <h3 id={id}>{children}</h3>;
+                    code({ className, children, ...props }) {
+                      const match = /language-(\w+)/.exec(className || "");
+                      const language = match ? match[1] : "";
+                      const codeContent = String(children).replace(/\n$/, "");
+
+                      if (language === "mermaid") {
+                        return <MermaidBlock fullMarkdown={activeContent}>{codeContent}</MermaidBlock>;
+                      }
+
+                      const isInline = !match && !String(children).includes("\n");
+                      if (isInline) {
+                        return (
+                          <code className="px-1.5 py-0.5 rounded-md bg-surface-2 text-accent font-mono text-xs" {...props}>
+                            {children}
+                          </code>
+                        );
+                      }
+
+                      return <CodeBlock>{codeContent}</CodeBlock>;
+                    },
+                    table({ children }) {
+                      return (
+                        <div className="overflow-x-auto my-4 rounded-xl border border-border/60">
+                          <table className="w-full text-xs sm:text-sm border-collapse">{children}</table>
+                        </div>
+                      );
+                    },
+                    th({ children }) {
+                      return <th className="bg-surface-2 px-3 py-2 text-left font-semibold text-foreground border-b border-border/60">{children}</th>;
+                    },
+                    td({ children }) {
+                      return <td className="px-3 py-2 border-b border-border/30 text-muted">{children}</td>;
+                    },
+                    ul({ children }) {
+                      return <ul className="list-disc list-inside space-y-1.5 my-2 text-muted text-xs sm:text-sm">{children}</ul>;
+                    },
+                    ol({ children }) {
+                      return <ol className="list-decimal list-inside space-y-1.5 my-2 text-muted text-xs sm:text-sm">{children}</ol>;
+                    },
+                    p({ children }) {
+                      return <p className="my-2 leading-relaxed text-muted text-xs sm:text-sm">{children}</p>;
+                    },
+                    blockquote({ children }) {
+                      return (
+                        <blockquote className="border-l-2 border-accent/60 pl-3 py-1 my-3 bg-accent/5 rounded-r-lg text-xs sm:text-sm italic text-muted-foreground">
+                          {children}
+                        </blockquote>
+                      );
                     },
                   }}
                 >
                   {activeContent}
                 </ReactMarkdown>
               </div>
-            ) : activeTab === "prd" ? (
-              /* Loading PRD Utama state */
-              <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-                <div className="w-12 h-12 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin mb-4" />
-                <h3 className="text-base sm:text-lg font-bold mb-2">Menyusun Dokumen PRD Utama...</h3>
-                <p className="text-xs sm:text-sm text-muted max-w-[45ch]">
-                  AI sedang menganalisis brief dan menyusun dokumen PRD lengkap secara real-time.
-                </p>
+            ) : isDocGenerating ? (
+              <div className="flex flex-col items-center justify-center min-h-[300px] text-muted space-y-3">
+                <div className="relative">
+                  <div className="w-10 h-10 border-2 border-accent/20 border-t-accent rounded-full animate-spin" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Sedang menyusun {activeTab === "instruction" ? "INSTRUCTIONS.md" : "AGENTS.md"}...
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Menyelaraskan spesifikasi teknis dan aturan rekayasa software dengan PRD.
+                  </p>
+                </div>
               </div>
             ) : (
-              /* State Empty Module -> Prompt to Generate Separately */
-              <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-                <div className="w-14 h-14 rounded-2xl bg-surface-2 border border-border flex items-center justify-center text-accent mb-4">
-                  {activeTab === "instruction" && <Code size={28} />}
-                  {activeTab === "module_a" && <FolderSimple size={28} />}
-                  {activeTab === "module_b" && <Plugs size={28} />}
-                  {activeTab === "module_c" && <TerminalWindow size={28} />}
+              <div className="flex flex-col items-center justify-center min-h-[300px] text-muted space-y-4">
+                <TerminalWindow size={40} className="text-muted-foreground/40" />
+                <div className="text-center space-y-1 max-w-md">
+                  <p className="text-sm font-medium text-foreground">
+                    {activeTab === "instruction" ? "INSTRUCTIONS.md Belum Dibuat" : "AGENTS.md Belum Dibuat"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {activeTab === "instruction"
+                      ? "Panduan instruksi eksekusi langkah-demi-langkah bagi developer untuk mengimplementasikan PRD."
+                      : "Master system prompt & aturan coding ketat untuk AI Coding Agent (Inquiry-First & Modular)."}
+                  </p>
                 </div>
-
-                <h3 className="text-base sm:text-lg font-bold mb-2">
-                  {activeTab === "instruction" && "Generate INSTRUCTIONS.md"}
-                  {activeTab === "module_a" && "Generate Modul A: File & Folder Structure"}
-                  {activeTab === "module_b" && "Generate Modul B: API & Endpoint Specs"}
-                  {activeTab === "module_c" && "Generate Modul C: Vibe Coding Prompts"}
-                </h3>
-
-                <p className="text-xs sm:text-sm text-muted max-w-[50ch] mb-6">
-                  {activeTab === "instruction" &&
-                    "Dokumen panduan khusus untuk AI Agent Coding (Cursor, Windsurf, Antigravity) belum di-generate secara terpisah."}
-                  {activeTab === "module_a" &&
-                    "Spesifikasi direktori/folder lengkap ASCII tree dan setup .env belum di-generate secara terpisah."}
-                  {activeTab === "module_b" &&
-                    "Tabel spesifikasi endpoint API, HTTP Method, dan JSON Payload belum di-generate secara terpisah."}
-                  {activeTab === "module_c" &&
-                    "4 Master Prompt terpisah untuk Vibe Coding (Setup, Backend, Frontend, Testing) belum di-generate."}
-                </p>
-
                 <MagneticButton
                   variant="primary"
-                  size="md"
+                  size="sm"
                   onClick={() => {
                     if (activeTab === "instruction") {
                       fetchAndStream("/api/generate-instruction", "instruction", setInstructionMD);
-                    } else if (activeTab === "module_a") {
-                      fetchAndStream("/api/generate-module-a", "module_a", setModuleAMD);
-                    } else if (activeTab === "module_b") {
-                      fetchAndStream("/api/generate-module-b", "module_b", setModuleBMD);
-                    } else if (activeTab === "module_c") {
-                      fetchAndStream("/api/generate-module-c", "module_c", setModuleCMD);
+                    } else if (activeTab === "agents") {
+                      fetchAndStream("/api/generate-agents", "agents", setAgentsMD);
                     }
                   }}
-                  isLoading={isModuleGenerating}
                 >
-                  <Sparkle weight="fill" size={16} />
-                  <span>
-                    {isModuleGenerating
-                      ? "Generating Modul..."
-                      : activeTab === "instruction"
-                      ? "Generate INSTRUCTIONS.md"
-                      : activeTab === "module_a"
-                      ? "Generate Modul A"
-                      : activeTab === "module_b"
-                      ? "Generate Modul B"
-                      : "Generate Modul C"}
-                  </span>
-                  <ArrowRight size={16} weight="bold" />
+                  <Sparkle size={14} weight="fill" />
+                  <span>Generate Dokumen Ini</span>
                 </MagneticButton>
               </div>
             )}
 
-            {(isCurrentStreaming || isModuleGenerating) && (
-              <span className="inline-block w-2 h-5 bg-accent ml-1 cursor-blink" />
+            {/* Streaming indicator */}
+            {(isCurrentStreaming || isDocGenerating) && (
+              <div className="flex items-center gap-2 mt-4 text-xs text-accent">
+                <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+                <span className="font-mono">Generating content in real-time...</span>
+              </div>
             )}
           </div>
         </GlassCard>
 
-        {/* Desktop TOC Sidebar */}
-        {showTOC && toc.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="hidden lg:block lg:sticky lg:top-6 lg:self-start w-full"
-          >
-            <GlassCard className="p-4">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Daftar Isi Dokumen
-              </h4>
-              <nav className="space-y-1 max-h-[70vh] overflow-y-auto">
+        {/* Desktop Sidebar: Table of Contents & Quick Summary */}
+        <div className="hidden lg:flex flex-col gap-4 sticky top-6">
+          <GlassCard className="p-4">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Daftar Isi</span>
+              <span className="text-[10px] text-accent font-mono">{toc.length} sections</span>
+            </h4>
+            {toc.length > 0 ? (
+              <nav className="space-y-1 max-h-[45vh] overflow-y-auto pr-1 scrollbar-thin">
                 {toc.map((item, i) => (
                   <a
                     key={i}
                     href={`#${item.id}`}
-                    className={`block text-xs truncate transition-colors hover:text-accent ${
+                    className={`block text-xs truncate transition-colors hover:text-accent py-0.5 ${
                       item.level === 1
                         ? "text-foreground font-medium"
                         : item.level === 2
-                        ? "text-muted pl-3"
-                        : "text-muted-foreground pl-6"
+                        ? "text-muted pl-2.5 border-l border-border/40"
+                        : "text-muted-foreground pl-4 border-l border-border/20"
                     }`}
                   >
                     {item.text}
                   </a>
                 ))}
               </nav>
-            </GlassCard>
-          </motion.div>
-        )}
+            ) : (
+              <p className="text-xs text-muted-foreground">Tidak ada heading terdeteksi.</p>
+            )}
+          </GlassCard>
 
-        {/* 16-Doc Suite View Tab */}
-        {activeTab === "suite" && isDocSuiteUnlocked && (
-          <div className="mt-6">
-            <DocSuiteViewer
-              prdContent={markdown}
-              projectBrief={projectBrief}
-              prdTitle={prdTitle}
-            />
-          </div>
-        )}
+          {/* Quick Context Card */}
+          <GlassCard className="p-4 space-y-2.5">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Code size={14} className="text-accent" />
+              <span>Vibe Coding Architecture</span>
+            </h4>
+            <div className="text-[11px] text-muted-foreground space-y-1.5">
+              <p>
+                <strong className="text-foreground">PRD:</strong> Spesifikasi fungsional & data model.
+              </p>
+              <p>
+                <strong className="text-foreground">INSTRUCTIONS.md:</strong> Panduan eksekusi developer.
+              </p>
+              <p>
+                <strong className="text-foreground">AGENTS.md:</strong> Aturan AI Agent (Inquiry-First Protocol).
+              </p>
+            </div>
+          </GlassCard>
+        </div>
       </div>
 
-      {/* Pakasir QRIS Payment Modal */}
-      <PaymentModal
-        isOpen={isPaymentModalOpen}
-        onClose={() => setIsPaymentModalOpen(false)}
-        onPaymentSuccess={(orderId) => {
-          setIsDocSuiteUnlocked(true);
-          setIsPaymentModalOpen(false);
-          setActiveTab("suite");
-          if (prdTitle) {
-            const cleanKey = `unlocked_suite_${prdTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-            localStorage.setItem(cleanKey, "true");
-          }
-        }}
-        prdTitle={prdTitle}
+      {/* Floating Chatbot Drawer */}
+      <PRDChatbot
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        prdContent={markdown}
+        projectBrief={projectBrief}
+        summary={summary}
       />
     </motion.div>
   );

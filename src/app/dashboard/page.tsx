@@ -21,6 +21,9 @@ interface PRDDocument {
   id: string;
   title: string;
   content: string;
+  instructionsContent?: string;
+  agentsContent?: string;
+  docSuiteMap?: Record<string, string>;
   createdAt: any;
   isSuiteUnlocked?: boolean;
 }
@@ -86,6 +89,9 @@ export default function Dashboard() {
             id: docSnap.id,
             title,
             content,
+            instructionsContent: data.instructionsContent || data.instructionMD || "",
+            agentsContent: data.agentsContent || data.agentsMD || "",
+            docSuiteMap: data.docSuiteMap || {},
             createdAt: data.createdAt,
             isSuiteUnlocked: isUnlocked,
           });
@@ -250,26 +256,33 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => {
                       const isOwner = isOwnerUser(user);
-                      if (isOwner || (selectedPrd && unlockedPRDs[selectedPrd.id])) {
+                      const isUnlocked = isOwner || (selectedPrd && unlockedPRDs[selectedPrd.id]);
+                      if (isUnlocked) {
                         setShowSuiteViewer((prev) => !prev);
                       } else {
                         setIsPaymentModalOpen(true);
                       }
                     }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
-                      isOwnerUser(user) || (selectedPrd && unlockedPRDs[selectedPrd.id])
+                      showSuiteViewer
+                        ? "bg-emerald-500 text-zinc-950 shadow-md ring-2 ring-emerald-400/50"
+                        : isOwnerUser(user) || (selectedPrd && unlockedPRDs[selectedPrd.id])
                         ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30"
                         : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 border border-amber-400/40"
                     }`}
                     title={
-                      isOwnerUser(user) || (selectedPrd && unlockedPRDs[selectedPrd.id])
-                        ? "Tampilkan Paket 16 Dokumen"
+                      showSuiteViewer
+                        ? "Tutup Suite dan kembali ke tampilan PRD Utama"
+                        : isOwnerUser(user) || (selectedPrd && unlockedPRDs[selectedPrd.id])
+                        ? "Tampilkan Paket 16 Dokumen Teknikal"
                         : "Buka Paket 16 Dokumentasi Teknikal Project (Rp 50.000)"
                     }
                   >
                     <Crown size={16} weight="fill" />
                     <span>
-                      {isOwnerUser(user)
+                      {showSuiteViewer
+                        ? "Tutup Suite (Lihat PRD)"
+                        : isOwnerUser(user)
                         ? "16-Doc Suite (Owner)"
                         : selectedPrd && unlockedPRDs[selectedPrd.id]
                         ? "16-Doc Suite (Unlocked)"
@@ -312,10 +325,18 @@ export default function Dashboard() {
 
               {/* Content Render / Suite Render */}
               <div className="flex-1 overflow-y-auto p-6 prose-prd">
-                {showSuiteViewer && selectedPrd && unlockedPRDs[selectedPrd.id] ? (
+                {showSuiteViewer && selectedPrd && (isOwnerUser(user) || unlockedPRDs[selectedPrd.id]) ? (
                   <DocSuiteViewer
+                    prdId={selectedPrd.id}
                     prdContent={selectedPrd.content}
                     prdTitle={selectedPrd.title}
+                    initialDocs={selectedPrd.docSuiteMap}
+                    onDocsUpdate={(updatedMap) => {
+                      setSelectedPrd((prev) => (prev ? { ...prev, docSuiteMap: updatedMap } : null));
+                      setPrds((prev) =>
+                        prev.map((p) => (p.id === selectedPrd.id ? { ...p, docSuiteMap: updatedMap } : p))
+                      );
+                    }}
                   />
                 ) : (
                   <ReactMarkdown

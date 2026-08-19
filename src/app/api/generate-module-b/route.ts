@@ -5,28 +5,26 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const { brief, summary, model } = await request.json();
+    const { brief, summary, prdContent, model } = await request.json();
 
-    if (!brief) {
-      return Response.json({ error: "Brief diperlukan." }, { status: 400 });
+    if (!brief && !prdContent) {
+      return Response.json({ error: "Brief atau PRD diperlukan." }, { status: 400 });
     }
 
-    const userMessage = `Berikut informasi project dari user:
-
-Brief User:
-"${brief}"
-
-${
-  summary
-    ? `Ringkasan Project:
+    let userMessage = `Berikut informasi project dari user:\n\n`;
+    if (brief) userMessage += `Brief User:\n"${brief}"\n\n`;
+    if (summary) {
+      userMessage += `Ringkasan Project:
 - Jenis Project: ${summary.projectType}
 - User Role: ${summary.userRoles?.join(", ")}
 - Fitur MVP: ${summary.mvpFeatures?.join(", ")}
-- Data Utama: ${summary.mainData?.join(", ")}`
-    : ""
-}
+- Data Utama: ${summary.mainData?.join(", ")}\n\n`;
+    }
+    if (prdContent) {
+      userMessage += `PRD Context:\n${prdContent.slice(0, 3000)}\n\n`;
+    }
 
-Buatlah Modul B: API Route & Endpoint Specifications secara sangat detail mencakup tabel endpoint, sample JSON request body, dan sample JSON response body.`;
+    userMessage += `Buatlah Modul B: API Route & Endpoint Specifications secara sangat detail mencakup tabel endpoint, sample JSON request body, dan sample JSON response body.`;
 
     const stream = await streamChatCompletion(
       GENERATE_MODULE_B_SYSTEM_PROMPT,

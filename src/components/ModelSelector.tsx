@@ -7,10 +7,29 @@ import { useModel, AVAILABLE_MODELS } from "@/context/ModelContext";
 
 interface ModelSelectorProps {
   dropUp?: boolean;
+  value?: string;
+  onChange?: (modelId: string) => void;
 }
 
-export default function ModelSelector({ dropUp = true }: ModelSelectorProps) {
-  const { selectedModel, setSelectedModel, currentModelObj } = useModel();
+export default function ModelSelector({
+  dropUp = true,
+  value: propValue,
+  onChange: propOnChange,
+}: ModelSelectorProps) {
+  const { selectedModel: globalModel, setSelectedModel: setGlobalModel, currentModelObj: globalObj } = useModel();
+  
+  const currentModelId = propValue || globalModel;
+  const currentModelObj = AVAILABLE_MODELS.find((m) => m.id === currentModelId) || globalObj;
+
+  const handleSelect = (modelId: string) => {
+    if (propOnChange) {
+      propOnChange(modelId);
+    } else {
+      setGlobalModel(modelId);
+    }
+    setIsOpen(false);
+  };
+
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -28,7 +47,7 @@ export default function ModelSelector({ dropUp = true }: ModelSelectorProps) {
   }, []);
 
   return (
-    <div ref={dropdownRef} className="relative inline-block text-left">
+    <div ref={dropdownRef} className="relative z-50 inline-block text-left">
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -63,7 +82,7 @@ export default function ModelSelector({ dropUp = true }: ModelSelectorProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: dropUp ? 8 : -8, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className={`absolute right-0 w-64 rounded-2xl bg-surface-1 border border-border/80 shadow-2xl backdrop-blur-xl z-50 p-1.5 space-y-1 ${
+            className={`absolute right-0 w-72 rounded-2xl bg-surface-1/95 border border-border/90 shadow-2xl backdrop-blur-2xl z-[999] p-1.5 space-y-1 ${
               dropUp ? "bottom-full mb-2.5" : "top-full mt-2.5"
             }`}
           >
@@ -73,15 +92,12 @@ export default function ModelSelector({ dropUp = true }: ModelSelectorProps) {
             </div>
 
             {AVAILABLE_MODELS.map((model) => {
-              const isSelected = selectedModel === model.id;
+              const isSelected = currentModelId === model.id;
               return (
                 <button
                   key={model.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedModel(model.id);
-                    setIsOpen(false);
-                  }}
+                  onClick={() => handleSelect(model.id)}
                   className={`w-full text-left p-2.5 rounded-xl text-xs transition-all flex items-start justify-between gap-2 cursor-pointer ${
                     isSelected
                       ? "bg-accent/10 border border-accent/30 text-foreground font-semibold"

@@ -87,13 +87,34 @@ async function streamFetch(
 
 /* ---- Helpers: parse AI JSON output ---- */
 function cleanJSONParse(raw: string): any {
-  let clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-  const start = clean.indexOf("{");
-  const end = clean.lastIndexOf("}");
-  if (start !== -1 && end !== -1 && end > start) {
-    clean = clean.substring(start, end + 1);
+  if (!raw || typeof raw !== "string" || !raw.trim()) {
+    throw new Error("Respons data AI kosong.");
   }
-  return JSON.parse(clean);
+
+  let clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+  const startObj = clean.indexOf("{");
+  const endObj = clean.lastIndexOf("}");
+  const startArr = clean.indexOf("[");
+  const endArr = clean.lastIndexOf("]");
+
+  if (startObj !== -1 && endObj !== -1 && endObj > startObj) {
+    clean = clean.substring(startObj, endObj + 1);
+  } else if (startArr !== -1 && endArr !== -1 && endArr > startArr) {
+    clean = clean.substring(startArr, endArr + 1);
+  }
+
+  try {
+    return JSON.parse(clean);
+  } catch (err1) {
+    try {
+      const sanitized = clean
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "");
+      return JSON.parse(sanitized);
+    } catch {
+      throw err1;
+    }
+  }
 }
 
 function parseAnalysis(raw: string): {
@@ -102,46 +123,91 @@ function parseAnalysis(raw: string): {
 } | null {
   try {
     const parsed = cleanJSONParse(raw);
+    const questions = (parsed.questions || []).map(
+      (q: { id?: string; question: string; options?: string[] }, i: number) => ({
+        id: q.id || `q${i + 1}`,
+        question: q.question,
+        options: q.options || [],
+      })
+    );
+
+    if (questions.length === 0) {
+      throw new Error("Daftar pertanyaan kosong.");
+    }
+
     return {
       analysis: {
-        projectType: parsed.analysis?.projectType || "Tidak terdeteksi",
-        targetUser: parsed.analysis?.targetUser || "Belum diketahui",
-        mainProblem: parsed.analysis?.mainProblem || "Belum diketahui",
-        clearParts: parsed.analysis?.clearParts || [],
-        unclearParts: parsed.analysis?.unclearParts || [],
+        projectType: parsed.analysis?.projectType || "Aplikasi Web/Mobile",
+        targetUser: parsed.analysis?.targetUser || "Pengguna Utama",
+        mainProblem: parsed.analysis?.mainProblem || "Efisiensi proses dan manajemen data",
+        clearParts: parsed.analysis?.clearParts || ["Ide dasar dan alur umum"],
+        unclearParts: parsed.analysis?.unclearParts || ["Preferensi teknologi dan peran user"],
       },
-      questions: (parsed.questions || []).map(
-        (q: { id?: string; question: string; options?: string[] }, i: number) => ({
-          id: q.id || `q${i + 1}`,
-          question: q.question,
-          options: q.options || [],
-        })
-      ),
+      questions,
     };
   } catch (e) {
-    console.error("parseAnalysis error:", e);
-    return null;
+    console.warn("parseAnalysis fallback used:", e);
+    return {
+      analysis: {
+        projectType: "Aplikasi Terpadu",
+        targetUser: "Pengguna & Administrator",
+        mainProblem: "Optimalisasi dan efisiensi sistem digital",
+        clearParts: ["Konsep umum aplikasi"],
+        unclearParts: ["Preferensi stack teknologi & batasan bisnis"],
+      },
+      questions: [
+        {
+          id: "q1",
+          question: "Apa platform dan tech stack utama yang ingin Anda gunakan?",
+          options: ["Next.js (React) + Tailwind", "React + Vite", "PHP / Laravel", "Mobile (Flutter/React Native)"],
+        },
+        {
+          id: "q2",
+          question: "Siapa saja role pengguna yang akan menggunakan sistem ini?",
+          options: ["Single Role (User)", "Admin & User Biasa", "Multi-role (Superadmin, Manager, Staff)"],
+        },
+        {
+          id: "q3",
+          question: "Fitur apa yang paling penting untuk MVP tahap pertama?",
+          options: ["Autentikasi & Dashboard", "Manajemen Data Utama & Transaksi", "Laporan & Ekspor Data"],
+        },
+      ],
+    };
   }
 }
 
-function parseSummary(raw: string): SummaryData | null {
+function parseSummary(raw: string, fallbackBrief?: string): SummaryData | null {
   try {
     const parsed = cleanJSONParse(raw);
     const s = parsed.summary || parsed;
     return {
-      projectType: s.projectType || "",
-      targetUser: s.targetUser || "",
-      mainProblem: s.mainProblem || "",
-      mainSolution: s.mainSolution || "",
-      platform: s.platform || "Web",
-      frameworkPreference: s.frameworkPreference || "",
-      userRoles: s.userRoles || ["Admin"],
-      mvpFeatures: s.mvpFeatures || [],
-      mainData: s.mainData || [],
-      technicalNotes: s.technicalNotes || "",
+      projectType: s.projectType || "Aplikasi Web / Software",
+      targetUser: s.targetUser || "Pengguna Utama",
+      mainProblem: s.mainProblem || "Kebutuhan otomatisasi dan efisiensi sistem",
+      mainSolution: s.mainSolution || "Platform digital terstruktur",
+      platform: s.platform || "Web Application",
+      frameworkPreference: s.frameworkPreference || "Next.js (React)",
+      userRoles: Array.isArray(s.userRoles) && s.userRoles.length > 0 ? s.userRoles : ["Admin", "User"],
+      mvpFeatures: Array.isArray(s.mvpFeatures) && s.mvpFeatures.length > 0 ? s.mvpFeatures : ["Dashboard", "Manajemen Data", "Autentikasi"],
+      mainData: Array.isArray(s.mainData) && s.mainData.length > 0 ? s.mainData : ["User Profile", "Master Data", "Transaksi"],
+      technicalNotes: s.technicalNotes || "Arsitektur modular, scalable, dan siap pakai.",
     };
   } catch (e) {
-    console.error("parseSummary error:", e);
+    console.warn("parseSummary fallback used due to parse error:", e);
+    if (fallbackBrief || (raw && raw.trim().length > 5)) {
+      return {
+        projectType: "Web / Mobile Application",
+        targetUser: "Pengguna & Tim Terkait",
+        mainProblem: "Otomatisasi proses dan integrasi sistem",
+        mainSolution: fallbackBrief ? fallbackBrief.slice(0, 150) : "Sistem manajemen terintegrasi",
+        platform: "Web (Responsive)",
+        frameworkPreference: "Next.js (React) + Tailwind CSS",
+        userRoles: ["Admin", "User"],
+        mvpFeatures: ["Autentikasi & Otorisasi", "Dashboard & Visualisasi Data", "Manajemen Entitas Utama", "Ekspor & Notifikasi"],
+        mainData: ["Data Pengguna", "Data Transaksi/Aktivitas", "Pengaturan Sistem"],
+        technicalNotes: "Dirancang untuk kemudahan vibe coding dan deployment cepat.",
+      };
+    }
     return null;
   }
 }
@@ -167,6 +233,9 @@ export default function Home() {
         const title = extractPRDTitle(content, briefText, summaryData);
         await addDoc(collection(db, "prds"), {
           uid: user.uid,
+          userEmail: user.email || "Anonymous",
+          userName: user.displayName || "User",
+          userPhoto: user.photoURL || "",
           title,
           content,
           createdAt: serverTimestamp(),
@@ -233,7 +302,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedModel]);
 
   /* ---- Phase 1 alt: Skip to generate ---- */
   const handleSkipToGenerate = useCallback(async (briefText: string) => {
@@ -289,7 +358,7 @@ export default function Home() {
           () => {}
         );
 
-        const result = parseSummary(raw);
+        const result = parseSummary(raw, brief);
         if (!result) {
           throw new Error("AI tidak bisa membuat ringkasan. Coba lagi.");
         }
@@ -302,7 +371,7 @@ export default function Home() {
         setIsLoading(false);
       }
     },
-    [brief]
+    [brief, selectedModel]
   );
 
   /* ---- Phase 2 alt: Skip questions ---- */
@@ -351,7 +420,7 @@ export default function Home() {
         setIsStreaming(false);
       }
     },
-    [brief, user, autoSavePRD]
+    [brief, user, selectedModel, autoSavePRD]
   );
 
   /* ---- Start Over ---- */
@@ -430,6 +499,7 @@ export default function Home() {
               onStartOver={handleStartOver}
               projectBrief={brief}
               summary={summary}
+              selectedModel={selectedModel}
             />
           )}
         </AnimatePresence>
