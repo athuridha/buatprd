@@ -37,6 +37,7 @@ interface PRDOutputProps {
   projectBrief?: string;
   summary?: any;
   selectedModel?: string;
+  onRegeneratePRD?: () => void;
 }
 
 type TabType = "prd" | "instruction" | "agents";
@@ -135,6 +136,7 @@ export default function PRDOutput({
   projectBrief,
   summary,
   selectedModel,
+  onRegeneratePRD,
 }: PRDOutputProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLDivElement>(null);
@@ -756,10 +758,16 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
                 <TerminalWindow size={40} className="text-muted-foreground/40" />
                 <div className="text-center space-y-1 max-w-md">
                   <p className="text-sm font-medium text-foreground">
-                    {activeTab === "instruction" ? "INSTRUCTIONS.md Belum Dibuat" : "AGENTS.md Belum Dibuat"}
+                    {activeTab === "prd"
+                      ? "Dokumen PRD Utama Belum Selesai / Gagal"
+                      : activeTab === "instruction"
+                      ? "INSTRUCTIONS.md Belum Dibuat"
+                      : "AGENTS.md Belum Dibuat"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {activeTab === "instruction"
+                    {activeTab === "prd"
+                      ? "Dokumen Product Requirements Document (PRD) utama belum termuat atau sempat terputus saat streaming."
+                      : activeTab === "instruction"
                       ? "Panduan instruksi eksekusi langkah-demi-langkah bagi developer untuk mengimplementasikan PRD."
                       : "Master system prompt & aturan coding ketat untuk AI Coding Agent (Inquiry-First & Modular)."}
                   </p>
@@ -768,7 +776,11 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
                   variant="primary"
                   size="sm"
                   onClick={() => {
-                    if (activeTab === "instruction") {
+                    if (activeTab === "prd") {
+                      if (onRegeneratePRD) {
+                        onRegeneratePRD();
+                      }
+                    } else if (activeTab === "instruction") {
                       fetchAndStream("/api/generate-instruction", "instruction", setInstructionMD);
                     } else if (activeTab === "agents") {
                       fetchAndStream("/api/generate-agents", "agents", setAgentsMD);
@@ -776,7 +788,9 @@ Generated with BuatPRD — AI-Assisted PRD Architect.
                   }}
                 >
                   <Sparkle size={14} weight="fill" />
-                  <span>Generate Dokumen Ini</span>
+                  <span>
+                    {activeTab === "prd" ? "Generate / Coba Ulang PRD Utama" : "Generate Dokumen Ini"}
+                  </span>
                 </MagneticButton>
               </div>
             )}

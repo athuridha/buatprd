@@ -423,6 +423,33 @@ export default function Home() {
     [brief, user, selectedModel, autoSavePRD]
   );
 
+  /* ---- Regenerate PRD in Phase 4 ---- */
+  const handleRegeneratePRD = useCallback(async () => {
+    if (!brief) return;
+    setIsLoading(true);
+    setIsStreaming(true);
+    setPrdMarkdown("");
+    setError(null);
+
+    try {
+      const finalText = await streamFetch(
+        "/api/generate-prd",
+        summary
+          ? { brief, summary, model: selectedModel }
+          : { brief, skipQuestions: true, model: selectedModel },
+        (text) => setPrdMarkdown(text)
+      );
+      if (user) {
+        await autoSavePRD(finalText, brief, summary);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal generate PRD.");
+    } finally {
+      setIsLoading(false);
+      setIsStreaming(false);
+    }
+  }, [brief, summary, selectedModel, user, autoSavePRD]);
+
   /* ---- Start Over ---- */
   const handleStartOver = useCallback(() => {
     setPhase(1);
@@ -500,6 +527,7 @@ export default function Home() {
               projectBrief={brief}
               summary={summary}
               selectedModel={selectedModel}
+              onRegeneratePRD={handleRegeneratePRD}
             />
           )}
         </AnimatePresence>

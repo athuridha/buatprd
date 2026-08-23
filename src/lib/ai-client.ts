@@ -153,7 +153,7 @@ function isRetryableError(err: unknown): boolean {
   );
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 7000): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 15000): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -174,7 +174,7 @@ async function executeWithFailover<T>(
   const primary = getClientAndModel(requestedModel);
 
   try {
-    return await withTimeout(operation(primary.client, primary.model), 7000);
+    return await withTimeout(operation(primary.client, primary.model), 15000);
   } catch (err) {
     if (isRetryableError(err)) {
       console.warn(
@@ -185,15 +185,15 @@ async function executeWithFailover<T>(
       if (primary.provider === "tokenrouter") {
         try {
           console.info("[AI Client] Auto-Switch -> B.AI (deepseek-v4-flash)");
-          return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 7000);
+          return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 15000);
         } catch {
           try {
             console.info("[AI Client] Auto-Switch -> TokenHarbor (deepseek-v4-flash:free)");
-            return await withTimeout(operation(tokenHarborClient, "deepseek-v4-flash:free"), 7000);
+            return await withTimeout(operation(tokenHarborClient, "deepseek-v4-flash:free"), 15000);
           } catch {
             try {
               console.info("[AI Client] Auto-Switch -> TokenHarbor MiMo (mimo-v2.5:free)");
-              return await withTimeout(operation(tokenHarborClient, "mimo-v2.5:free"), 7000);
+              return await withTimeout(operation(tokenHarborClient, "mimo-v2.5:free"), 15000);
             } catch {
               console.info("[AI Client] Auto-Switch -> Alibaba Qwen (qwen3.7-max-2026-05-20)");
               return await operation(alibabaClient, "qwen3.7-max-2026-05-20");
@@ -206,11 +206,11 @@ async function executeWithFailover<T>(
       if (primary.provider === "bai") {
         try {
           console.info("[AI Client] Auto-Switch -> TokenHarbor (deepseek-v4-flash:free)");
-          return await withTimeout(operation(tokenHarborClient, "deepseek-v4-flash:free"), 7000);
+          return await withTimeout(operation(tokenHarborClient, "deepseek-v4-flash:free"), 15000);
         } catch {
           try {
             console.info("[AI Client] Auto-Switch -> TokenHarbor MiMo (mimo-v2.5:free)");
-            return await withTimeout(operation(tokenHarborClient, "mimo-v2.5:free"), 7000);
+            return await withTimeout(operation(tokenHarborClient, "mimo-v2.5:free"), 15000);
           } catch {
             console.info("[AI Client] Auto-Switch -> Alibaba Qwen (qwen3.7-max-2026-05-20)");
             return await operation(alibabaClient, "qwen3.7-max-2026-05-20");
@@ -222,7 +222,7 @@ async function executeWithFailover<T>(
       if (primary.provider === "tokenharbor") {
         try {
           console.info("[AI Client] Auto-Switch -> B.AI (deepseek-v4-flash)");
-          return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 7000);
+          return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 15000);
         } catch {
           console.info("[AI Client] Auto-Switch -> Alibaba Qwen (qwen3.7-max-2026-05-20)");
           return await operation(alibabaClient, "qwen3.7-max-2026-05-20");
@@ -235,14 +235,14 @@ async function executeWithFailover<T>(
           if (snapshot !== primary.model) {
             try {
               console.info(`[AI Client] Auto-Switch -> Alibaba Snapshot (${snapshot})`);
-              return await withTimeout(operation(alibabaClient, snapshot), 7000);
+              return await withTimeout(operation(alibabaClient, snapshot), 15000);
             } catch {}
           }
         }
 
         try {
           console.info("[AI Client] Auto-Switch -> B.AI (deepseek-v4-flash)");
-          return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 7000);
+          return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 15000);
         } catch {
           console.info("[AI Client] Auto-Switch -> TokenHarbor MiMo (mimo-v2.5:free)");
           return await operation(tokenHarborClient, "mimo-v2.5:free");
@@ -252,7 +252,7 @@ async function executeWithFailover<T>(
       // 5. Final fallback
       try {
         console.info("[AI Client] Final Auto-Switch -> B.AI (deepseek-v4-flash)");
-        return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 7000);
+        return await withTimeout(operation(baiClient, "deepseek-v4-flash"), 15000);
       } catch {
         return await operation(alibabaClient, "qwen3.7-max-2026-05-20");
       }
