@@ -1,5 +1,5 @@
 const PAKASIR_SLUG = process.env.PAKASIR_SLUG || "buatprd";
-const PAKASIR_API_KEY = process.env.PAKASIR_API_KEY || "3AX8ZgrB3oku6qnFcwMwO4duk8zvp7m8";
+const PAKASIR_API_KEY = process.env.PAKASIR_API_KEY || "";
 const PAKASIR_BASE_URL = "https://app.pakasir.com";
 
 export interface PakasirPaymentResponse {

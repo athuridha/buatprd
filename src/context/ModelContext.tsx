@@ -17,16 +17,22 @@ export const AVAILABLE_MODELS: AIModel[] = [
     description: "Model flagship dengan penalaran paling mendalam, komprehensif, dan stabil.",
   },
   {
+    id: "ox-alpha",
+    name: "Ox Alpha",
+    badge: "Deep Reasoning",
+    description: "Model penalaran logis canggih untuk analisis sistem dan perancangan teknis mendalam.",
+  },
+  {
+    id: "minimax/minimax-m3:free",
+    name: "MiniMax M3",
+    badge: "Long Context",
+    description: "Kapasitas pemrosesan konteks ekstra luas dengan analisis arsitektur terperinci.",
+  },
+  {
     id: "deepseek-v4-flash",
     name: "DeepSeek V4 Flash",
     badge: "Architecture & Speed",
-    description: "Model cerdas & ultra-cepat via B.AI / TokenHarbor untuk arsitektur teknis.",
-  },
-  {
-    id: "mimo-v2.5:free",
-    name: "MiMo V2.5",
-    badge: "Xiaomi AI",
-    description: "Model cerdas berkecepatan tinggi dengan pemahaman konteks cepat dan adaptif.",
+    description: "Model cerdas & ultra-cepat untuk arsitektur teknis dan modularitas kode.",
   },
   {
     id: "qwen3.7-plus",
@@ -35,22 +41,10 @@ export const AVAILABLE_MODELS: AIModel[] = [
     description: "Model berkecepatan tinggi dengan responsivitas optimal dan efisien.",
   },
   {
-    id: "minimaxai/minimax-m3",
-    name: "MiniMax M3",
-    badge: "Long Context",
-    description: "Kapasitas pemrosesan konteks ekstra luas dengan analisis terperinci.",
-  },
-  {
     id: "z-ai/glm-5.2",
     name: "GLM 5.2",
     badge: "Deep Reason",
     description: "Penalaran logis mendalam dan pemetaan arsitektur sistematis.",
-  },
-  {
-    id: "qwen/qwen3.8-max-free",
-    name: "Qwen 3.8 Max",
-    badge: "Advanced",
-    description: "Generasi Qwen 3.8 dengan penalaran komprehensif.",
   },
 ];
 

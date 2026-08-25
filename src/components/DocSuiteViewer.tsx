@@ -61,6 +61,11 @@ export default function DocSuiteViewer({
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const isStoppedRef = useRef(false);
   const docsMapRef = useRef<Record<string, string>>({});
+  const onDocsUpdateRef = useRef(onDocsUpdate);
+
+  useEffect(() => {
+    onDocsUpdateRef.current = onDocsUpdate;
+  }, [onDocsUpdate]);
 
   // Stable cache key
   const cacheKey = `doc_suite_${prdId || encodeURIComponent(prdTitle).slice(0, 30)}`;
@@ -108,15 +113,15 @@ export default function DocSuiteViewer({
           if (isMounted && snap.exists()) {
             const data = snap.data();
             if (data.docSuiteMap && typeof data.docSuiteMap === "object") {
-              setDocsMap((prev) => {
-                const merged = { ...data.docSuiteMap, ...prev };
-                docsMapRef.current = merged;
-                try {
-                  localStorage.setItem(cacheKey, JSON.stringify(merged));
-                } catch {}
-                if (onDocsUpdate) onDocsUpdate(merged);
-                return merged;
-              });
+              const merged = { ...data.docSuiteMap, ...docsMapRef.current };
+              docsMapRef.current = merged;
+              setDocsMap(merged);
+              try {
+                localStorage.setItem(cacheKey, JSON.stringify(merged));
+              } catch {}
+              if (onDocsUpdateRef.current) {
+                onDocsUpdateRef.current(merged);
+              }
             }
           }
         })
@@ -146,11 +151,11 @@ export default function DocSuiteViewer({
           console.error("Failed to save docSuiteMap to Firestore:", err);
         }
       }
-      if (onDocsUpdate) {
-        onDocsUpdate(updatedDocs);
+      if (onDocsUpdateRef.current) {
+        onDocsUpdateRef.current(updatedDocs);
       }
     },
-    [cacheKey, prdId, onDocsUpdate]
+    [cacheKey, prdId]
   );
 
   // Stop single file generation

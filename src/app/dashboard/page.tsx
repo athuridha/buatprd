@@ -332,7 +332,13 @@ export default function Dashboard() {
                     prdTitle={selectedPrd.title}
                     initialDocs={selectedPrd.docSuiteMap}
                     onDocsUpdate={(updatedMap) => {
-                      setSelectedPrd((prev) => (prev ? { ...prev, docSuiteMap: updatedMap } : null));
+                      setSelectedPrd((prev) => {
+                        if (!prev) return null;
+                        if (JSON.stringify(prev.docSuiteMap) === JSON.stringify(updatedMap)) {
+                          return prev;
+                        }
+                        return { ...prev, docSuiteMap: updatedMap };
+                      });
                       setPrds((prev) =>
                         prev.map((p) => (p.id === selectedPrd.id ? { ...p, docSuiteMap: updatedMap } : p))
                       );
